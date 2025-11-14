@@ -204,7 +204,7 @@ class Application:
         raise RuntimeError(
             "Project directory not specified. Use one of:\n"
             f"  1. CLI: --project-dir /path/to/projects\n"
-            f"  2. Config: Set 'project_dir' in {git_root / 'hdlproject-config.json'}"
+            f"  2. Config: Set 'project_dir' in {git_root / 'hdlproject_config.json'}"
         )
     
     @staticmethod

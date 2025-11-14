@@ -138,7 +138,7 @@ hdlproject --help
 
 ### 1. Repository Setup
 
-First, configure your repository with `hdlproject-config.json` at the root:
+First, configure your repository with `hdlproject_global_config.yaml` at the root:
 
 ```json
 {
@@ -150,7 +150,7 @@ First, configure your repository with `hdlproject-config.json` at the root:
 
 ### 2. Project Configuration
 
-Create a project configuration file at `projects/my_project/hdlproject_config.yaml`:
+Create a project configuration file at `projects/my_project/hdlproject_project_config.yaml`:
 
 ```yaml
 project_information:
@@ -159,8 +159,8 @@ project_information:
   device_info:
     part_name: xc7a100tcsg324-1
     board_name: Arty A7-100
-    vivado_version_year: "2023"
-    vivado_version_sub: "2"
+  vivado_version_year: "2023"
+  vivado_version_sub: "2"
 
 constraints:
   - file: constraints/timing.xdc
@@ -215,18 +215,18 @@ hdlproject export my_project --output-dir ./exports
 ### Example Repository Layout
 
 #### Requirements
-- `hdldepends.json` and `hdlproject-config.json` must be at top of repository
-- `projects/` directory must match relative path from root of git repository with what was defined in `hdlproject-config.json`
-- each project (i.e. `project1`) must have a `hdlproject_config.yaml` file.
+- `hdldepends.json` and `hdlproject_config.json` must be at top of repository
+- `projects/` directory must match relative path from root of git repository with what was defined in `hdlproject_config.json`
+- each project (i.e. `project1`) must have a `hdlproject_project_config.yaml` file.
 - All other directory and file locations are completely customisable
 
 ```
 my_fpga_repo/
-├── hdlproject-config.json          # Repository configuration
+├── hdlproject_config.json          # Repository configuration
 ├── hdldepends.json                 # HDL dependency configuration
 ├── projects/                       # All projects directory
 │   ├── project1/
-│   │   ├── hdlproject_config.yaml  # Project configuration
+│   │   ├── hdlproject_project_config.yaml  # Project configuration
 │   │   ├── .hdlproject-vivado/build/          # Build artefacts (hidden)
 │   │   │   ├── project/            # Vivado project files
 │   │   │   ├── logs/               # Operation logs
@@ -235,7 +235,7 @@ my_fpga_repo/
 │   │   ├── .hdlproject-vivado/open/           # Open/edit artefacts
 │   │   └── .hdlproject-vivado/export/         # Export artefacts
 │   └── project2/
-│       └── hdlproject_config.yaml
+│       └── hdlproject_project_config.yaml
 ├── hdl/                            # HDL source files
 │   ├── rtl/
 │   │   ├── top_module.vhd
@@ -260,7 +260,7 @@ These directories are gitignored and can be safely deleted.
 
 ## Configuration
 
-### Repository Configuration (`hdlproject-config.json`)
+### Repository Configuration (`hdlproject_config.json`)
 
 Place at repository root:
 
@@ -278,7 +278,7 @@ Place at repository root:
 - `compile_order_script_format`: Format for compile order files (`json`, `csv`, `txt`)
 - `default_cores_per_project`: Default CPU cores for synthesis/implementation
 
-### Project Configuration (`hdlproject_config.yaml`)
+### Project Configuration (`hdlproject_project_config.yaml`)
 
 Each project needs a YAML configuration file:
 
@@ -349,7 +349,7 @@ impl_options:
   strategy: Performance_ExplorePostRoutePhysOpt
 ```
 
-**`projects/my_project/hdlproject_config.yaml`:**
+**`projects/my_project/hdlproject_project_config.yaml`:**
 ```yaml
 inherits: ../base_arty.yaml
 

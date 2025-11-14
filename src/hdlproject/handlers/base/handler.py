@@ -51,8 +51,7 @@ class BaseHandler(ABC):
         # Compose services
         self.project_loader = ProjectLoader(environment)
         self.vivado_executor = VivadoExecutor()
-        self.compile_order_service = self._create_compile_order_service()
-        
+                
         # Status manager created per execution
         self.status_manager: Optional[StatusManager] = None
     
@@ -93,6 +92,8 @@ class BaseHandler(ABC):
             self.status_manager.start()
             
             # 4. Create execution context
+            # Note: compile_order_service will be None initially
+            # Each project will create its own when needed
             context = ExecutionContext(
                 projects=project_contexts,
                 options=options,
@@ -100,7 +101,7 @@ class BaseHandler(ABC):
                 environment=self.environment,
                 vivado_executor=self.vivado_executor,
                 status_manager=self.status_manager,
-                compile_order_service=self.compile_order_service
+                compile_order_service=None  # Created per-project
             )
             
             # 5. Display configuration (handler-specific)
@@ -113,7 +114,14 @@ class BaseHandler(ABC):
             # 7. Process each project
             results = {}
             for project_ctx in context.projects:
-                single_ctx = self._make_single_context(context, project_ctx)
+                # Create compile order service for this project
+                compile_order_service = self._create_compile_order_service(project_ctx)
+                
+                single_ctx = self._make_single_context(
+                    context, 
+                    project_ctx,
+                    compile_order_service
+                )
                 
                 try:
                     # Create operation directories
@@ -184,7 +192,7 @@ class BaseHandler(ABC):
     # === Helper methods ===
     
     def get_project_list(self) -> list[str]:
-        """Get list of available projects (directories with hdlproject_config.yaml)"""
+        """Get list of available projects (directories with hdlproject_project_config.yaml)"""
         projects_dir = Path(self.environment['project_dir'])
         if not projects_dir.exists():
             return []
@@ -195,28 +203,54 @@ class BaseHandler(ABC):
                 continue
             
             # Check for configuration file
-            config_file = d / 'hdlproject_config.yaml'
+            config_file = d / 'hdlproject_project_config.yaml'
             if config_file.exists():
                 projects.append(d.name)
         
         return sorted(projects)
     
-    def _create_compile_order_service(self) -> CompileOrderService:
-        """Create compile order service if format specified"""
+    def _create_compile_order_service(self, project_ctx: ProjectContext) -> CompileOrderService:
+        """
+        Create compile order service for a specific project.
+        Uses the project's resolved hdldepends_config_path.
+        
+        Args:
+            project_ctx: Project context with loaded config
+            
+        Returns:
+            CompileOrderService (may have None manager if hdldepends not configured)
+        """
         compile_format = self.environment.get('compile_order_format')
         
-        if compile_format:
-            try:
-                manager = CompileOrderManager(output_format=compile_format)
-                logger.debug(f"Compile order service available: {compile_format}")
-                return CompileOrderService(manager)
-            except Exception as e:
-                logger.warning(f"Could not create compile order manager: {e}")
+        if not compile_format:
+            logger.debug("No compile order format specified")
+            return CompileOrderService(None)
         
-        return CompileOrderService(None)
+        try:
+            # Get hdldepends config path from project config
+            hdldepends_path = project_ctx.config.hdldepends_config_path
+            
+            # Create manager with explicit path
+            manager = CompileOrderManager(
+                output_format=compile_format,
+                hdldepends_config_path=hdldepends_path
+            )
+            
+            logger.debug(
+                f"Compile order service created for {project_ctx.config.name} "
+                f"using {hdldepends_path}"
+            )
+            return CompileOrderService(manager)
+            
+        except Exception as e:
+            logger.warning(
+                f"Could not create compile order manager for {project_ctx.config.name}: {e}"
+            )
+            return CompileOrderService(None)
     
     def _make_single_context(self, exec_ctx: ExecutionContext, 
-                            proj_ctx: ProjectContext) -> SingleProjectContext:
+                            proj_ctx: ProjectContext,
+                            compile_order_service: CompileOrderService) -> SingleProjectContext:
         """Create single project context from execution context"""
         return SingleProjectContext(
             project=proj_ctx,
@@ -224,7 +258,7 @@ class BaseHandler(ABC):
             operation_config=exec_ctx.operation_config,
             vivado_executor=exec_ctx.vivado_executor,
             status_manager=exec_ctx.status_manager,
-            compile_order_service=exec_ctx.compile_order_service
+            compile_order_service=compile_order_service
         )
     
     def _clean_operation_directories(self, context: ExecutionContext) -> None:

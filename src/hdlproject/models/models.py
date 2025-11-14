@@ -91,6 +91,11 @@ class ProjectInformation(FlexibleModel):
 class ProjectConfiguration(FlexibleModel):
     """Main configuration"""
     project_information: ProjectInformation
+    
+    # Optional project-level override for hdldepends config
+    # Path is relative to the project directory
+    hdldepends_config: Optional[str] = None
+    
     constraints: list[Constraint] = Field(default_factory=list)
     block_designs: list[BlockDesign] = Field(default_factory=list)
     synth_options: dict[str, Any] = Field(default_factory=dict)

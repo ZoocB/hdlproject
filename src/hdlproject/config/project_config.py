@@ -7,6 +7,7 @@ from typing import Optional, Any
 
 from hdlproject.models.models import ProjectConfiguration as PydanticConfig
 from hdlproject.config.config_resolver import ConfigResolver
+from hdlproject.config.repository import RepositoryConfigManager
 from hdlproject.utils.logging_manager import get_logger
 from hdlproject.config.paths import OperationPaths
 
@@ -46,6 +47,9 @@ class ProjectConfig:
     # Design information
     top_level_file_name: str
     
+    # HDLDepends configuration
+    hdldepends_config_path: Path
+    
     # Optional fields
     board_part: Optional[str] = None
     top_level_file_path: Optional[Path] = None
@@ -74,7 +78,6 @@ class ProjectConfig:
         vivado_location: Path,
         repository_root: Path,
         check_if_vivado_version_exists: bool = True
-
     ) -> 'ProjectConfig':
         """
         Load project configuration from YAML file.
@@ -84,6 +87,7 @@ class ProjectConfig:
             projects_base_dir: Base directory containing all projects
             vivado_location: Vivado installation location
             repository_root: Git repository root directory
+            check_if_vivado_version_exists: Whether to validate Vivado installation
             
         Returns:
             Loaded and validated ProjectConfig
@@ -93,11 +97,12 @@ class ProjectConfig:
         if not project_dir.exists():
             raise FileNotFoundError(f"Project directory not found: {project_dir}")
         
-        # Find configuration file
+        # Find configuration file (new naming: hdlproject_project_config.yaml)
         config_path = cls._find_configuration_file(project_dir)
         if not config_path:
             raise FileNotFoundError(
-                f"No configuration file found for project '{project_name}' in {project_dir}"
+                f"No configuration file found for project '{project_name}' in {project_dir}\n"
+                f"Expected: hdlproject_project_config.yaml"
             )
         
         # Create resolver and load configuration
@@ -114,6 +119,13 @@ class ProjectConfig:
         project_info = pydantic_config.project_information
         device_info = project_info.device_info
         
+        # Resolve hdldepends config path
+        hdldepends_path = cls._resolve_hdldepends_path(
+            pydantic_config=pydantic_config,
+            project_dir=project_dir,
+            repository_root=repository_root
+        )
+        
         # Create ProjectConfig instance
         config = cls(
             name=project_name,
@@ -124,6 +136,7 @@ class ProjectConfig:
             board_name=device_info.board_name,
             board_part=device_info.board_part,
             top_level_file_name=project_info.top_level_file_name,
+            hdldepends_config_path=hdldepends_path,
             top_level_generics={
                 name: generic.model_dump(exclude_unset=True)
                 for name, generic in project_info.top_level_generics.items()
@@ -144,6 +157,67 @@ class ProjectConfig:
         config.top_level_file_path = config._find_top_level_file(repository_root)
         
         return config
+    
+    @staticmethod
+    def _resolve_hdldepends_path(
+        pydantic_config: PydanticConfig,
+        project_dir: Path,
+        repository_root: Path
+    ) -> Path:
+        """
+        Resolve hdldepends config path with project override.
+        
+        Priority:
+        1. Project-level config (relative to project dir)
+        2. Global-level config (relative to repo root)
+        3. Error if neither specified
+        
+        Args:
+            pydantic_config: Loaded project configuration
+            project_dir: Project directory
+            repository_root: Repository root directory
+            
+        Returns:
+            Absolute path to hdldepends config
+            
+        Raises:
+            FileNotFoundError: If resolved path doesn't exist
+            ValueError: If no hdldepends config specified anywhere
+        """
+        # Check project-level override first
+        if pydantic_config.hdldepends_config:
+            project_hdldepends = project_dir / pydantic_config.hdldepends_config
+            if not project_hdldepends.exists():
+                raise FileNotFoundError(
+                    f"Project hdldepends config not found: {project_hdldepends}\n"
+                    f"  Specified in: {project_dir / 'hdlproject_project_config.yaml'}\n"
+                    f"  Path is relative to project directory: {project_dir}"
+                )
+            logger.info(f"Using project-level hdldepends config: {project_hdldepends}")
+            return project_hdldepends.resolve()
+        
+        # Fall back to global config
+        repo_config_manager = RepositoryConfigManager(repository_root)
+        repo_config = repo_config_manager.load()
+        
+        if not repo_config.hdldepends_config:
+            raise ValueError(
+                f"No hdldepends_config specified in either:\n"
+                f"  1. Project config: {project_dir / 'hdlproject_project_config.yaml'}\n"
+                f"  2. Global config: {repository_root / 'hdlproject_global_config.yaml'}\n"
+                f"Please add 'hdldepends_config: \"path/to/file\"' to one of these files"
+            )
+        
+        global_hdldepends = repository_root / repo_config.hdldepends_config
+        if not global_hdldepends.exists():
+            raise FileNotFoundError(
+                f"Global hdldepends config not found: {global_hdldepends}\n"
+                f"  Specified in: {repository_root / 'hdlproject_global_config.yaml'}\n"
+                f"  Path is relative to repository root: {repository_root}"
+            )
+        
+        logger.info(f"Using global-level hdldepends config: {global_hdldepends}")
+        return global_hdldepends.resolve()
     
     def resolve_for_operation(self, operation: str, output_directory: Path) -> None:
         """
@@ -196,7 +270,7 @@ class ProjectConfig:
             errors.append(
                 f"Project directory not found: {self.project_dir}\n"
                 f"  - Check that the project name is correct\n"
-                f"  - Verify the project_dir setting in hdlproject-config.json"
+                f"  - Verify the project_dir setting in hdlproject_global_config.yaml"
             )
         
         # Check Vivado settings (optional)
@@ -204,8 +278,7 @@ class ProjectConfig:
             errors.append(
                 f"Vivado {self.vivado_version.full_version} not found at: {self.vivado_version.settings_path}\n"
                 f"  - Install Vivado {self.vivado_version.full_version}\n"
-                f"  - Or update vivado_version in project configuration\n"
-                f"  - Available versions: {self._list_available_vivado_versions()}"
+                f"  - Or update vivado_version in project configuration"
             )
         
         # Check top-level file
@@ -213,6 +286,10 @@ class ProjectConfig:
             errors.append(f"Top-level file '{self.top_level_file_name}' not found in repository")
         elif not self.top_level_file_path.exists():
             errors.append(f"Top-level file not found at: {self.top_level_file_path}")
+        
+        # Check hdldepends config
+        if not self.hdldepends_config_path.exists():
+            errors.append(f"HDLDepends config not found: {self.hdldepends_config_path}")
         
         # Check resolved configuration
         if self.resolved_configuration_path and not self.resolved_configuration_path.exists():
@@ -244,10 +321,9 @@ class ProjectConfig:
     @staticmethod
     def _find_configuration_file(directory: Path) -> Optional[Path]:
         """Find YAML configuration file in directory"""
-        for name in ['hdlproject_config.yaml', 'hdlproject_config.yml']:
-            path = directory / name
-            if path.exists():
-                return path
+        path = directory / 'hdlproject_project_config.yaml'
+        if path.exists():
+            return path
         return None
     
     def _find_top_level_file(self, repository_root: Path) -> Optional[Path]:
@@ -270,7 +346,7 @@ class ProjectConfig:
         
         return found_files[0]
     
-    def _set_vivado_version(self, year: str, sub: str, vivado_location: Path, check_if_vivado_version_exists:bool=True) -> None:
+    def _set_vivado_version(self, year: str, sub: str, vivado_location: Path, check_if_vivado_version_exists: bool = True) -> None:
         """Set Vivado version information"""
         settings_path = vivado_location / f"{year}.{sub}" / "settings64.sh"
         

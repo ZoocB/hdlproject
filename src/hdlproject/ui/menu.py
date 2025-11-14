@@ -192,13 +192,18 @@ class ProjectManagementMenu:
         error_message: str = None
     ) -> None:
         """Display operation results - logs only."""
-        print("_" * 80)
+        print()
+        print("=" * 80)
+        print("OPERATION COMPLETE")
+        print("=" * 80)
+        
         # Error message if present
         if error_occurred and error_message:
             print()
             print(f"{self.RED}ERROR:{self.RESET} {error_message}")
         
         # Application log (always)
+        print()
         print(f"{self.BOLD}Application Log:{self.RESET}")
         print(f"  {self.app.app_log_path}")
         
@@ -213,14 +218,14 @@ class ProjectManagementMenu:
             else:
                 print(f"  Log: {self.DIM}{project_log} (not created){self.RESET}")
         
-        print("_" * 80)
+        print("=" * 80)
     
     def _get_project_log_path(self, project_name: str, handler_name: str) -> Path:
         """Get the expected path for a project log file"""
         return (
             self.app.project_dir / 
             project_name / 
-            f'.hdlproject-vivado/{handler_name}' / 
+            f'.hdlproject-vivado-{handler_name}' / 
             'logs' / 
             f'{handler_name}.log'
         )

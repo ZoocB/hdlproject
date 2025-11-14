@@ -26,9 +26,6 @@ proc parse_arguments {argv} {
     dict set args_dict cores 4
     dict set args_dict config_file "hdlproject_config.json"
     dict set args_dict compile_order_file "compile_order.json"
-    dict set args_dict log_file ""
-    dict set args_dict status_file ""
-    dict set args_dict terminate_file ""
     
     # Parse arguments
     set i 0
@@ -58,18 +55,6 @@ proc parse_arguments {argv} {
             "-compile_order" - "--compile-order" {
                 incr i
                 dict set args_dict compile_order_file [lindex $argv $i]
-            }
-            "-log_file" - "--log-file" {
-                incr i
-                dict set args_dict log_file [lindex $argv $i]
-            }
-            "-status_file" - "--status-file" {
-                incr i
-                dict set args_dict status_file [lindex $argv $i]
-            }
-            "-terminate_file" - "--terminate-file" {
-                incr i
-                dict set args_dict terminate_file [lindex $argv $i]
             }
             "-h" - "--help" {
                 print_usage
@@ -126,9 +111,6 @@ proc print_usage {} {
     puts "  -cores, --cores <num>                      Number of CPU cores for build (default: 4)"
     puts "  -config, --config <file>                   Configuration file (default: hdlproject_config.json)"
     puts "  -compile_order, --compile-order            Compile order file (default: compile_order.json)"
-    puts "  -log_file, --log-file <file>               Log file path (for build mode)"
-    puts "  -status_file, --status-file                Status file path (for build mode)"
-    puts "  -terminate_file, --terminate-file          Terminate file path (for build mode)"
     puts "  -h, --help                                 Show this help message"
     puts ""
     puts "Examples:"
@@ -152,20 +134,11 @@ set project_root_dir [dict get $args_dict project_root]
 set num_build_cores [dict get $args_dict cores]
 set config_file_name [dict get $args_dict config_file]
 set compile_order_file_name [dict get $args_dict compile_order_file]
-set log_file [dict get $args_dict log_file]
-set status_file [dict get $args_dict status_file]
-set terminate_file [dict get $args_dict terminate_file]
 
-# Convert mode string to integer for backward compatibility with existing modules
 switch $script_mode_str {
     "open"   { set script_mode $common::OPEN_MODE }
     "build"  { set script_mode $common::BUILD_MODE }
     "export" { set script_mode $common::EXPORT_MODE }
-}
-
-# Log terminal output location if log file specified
-if {$log_file ne ""} {
-    common::log_status "Terminal Logs: $log_file"
 }
 
 # ===============================================================================
@@ -292,49 +265,6 @@ if {![dict exists $compile_order_dict files]} {
 }
 set files_list [dict get $compile_order_dict files]
 
-# ===============================================================================
-# =========================== Build Mode Status Handling ========================
-# ===============================================================================
-
-# For build mode, write initial status
-if {$script_mode == $common::BUILD_MODE && $status_file ne ""} {
-    if {[catch {
-        set status_handle [open $status_file w]
-        puts $status_handle "running"
-        close $status_handle
-    } error_msg]} {
-        common::log_warning "project_workflow" "Failed to write initial status: $error_msg"
-    }
-}
-
-# Setup signal handlers for build mode
-if {$script_mode == $common::BUILD_MODE} {
-    # Check for termination file periodically
-    proc check_termination {} {
-        variable terminate_file
-        variable status_file
-        
-        if {$terminate_file ne "" && [file exists $terminate_file]} {
-            common::log_status "Build terminated by user"
-            if {$status_file ne ""} {
-                catch {
-                    set status_handle [open $status_file w]
-                    puts $status_handle "terminated"
-                    close $status_handle
-                }
-            }
-            exit 1
-        }
-        
-        # Schedule next check
-        after 2000 check_termination
-    }
-    
-    # Start termination checking
-    if {$terminate_file ne ""} {
-        after 2000 check_termination
-    }
-}
 
 # ===============================================================================
 # =========================== Project creation and setup ========================
