@@ -215,14 +215,14 @@ hdlproject export my_project --output-dir ./exports
 ### Example Repository Layout
 
 #### Requirements
-- `hdldepends.json` and `hdlproject_config.json` must be at top of repository
-- `projects/` directory must match relative path from root of git repository with what was defined in `hdlproject_config.json`
+- `hdlproject_global_config.yaml` must be at top of repository
+- `projects/` directory must match relative path from root of git repository with what was defined in `hdlproject_global_config.yaml`
 - each project (i.e. `project1`) must have a `hdlproject_project_config.yaml` file.
 - All other directory and file locations are completely customisable
 
 ```
 my_fpga_repo/
-├── hdlproject_config.json          # Repository configuration
+├── hdlproject_global_config.json          # Repository configuration
 ├── hdldepends.json                 # HDL dependency configuration
 ├── projects/                       # All projects directory
 │   ├── project1/
@@ -260,7 +260,7 @@ These directories are gitignored and can be safely deleted.
 
 ## Configuration
 
-### Repository Configuration (`hdlproject_config.json`)
+### Repository Configuration (`hdlproject_global_config.yaml`)
 
 Place at repository root:
 
