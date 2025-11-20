@@ -1,4 +1,4 @@
-# config.tcl - Configuration handler with fixed generic formatting
+# config.tcl
 
 package require json
 
@@ -90,11 +90,11 @@ namespace eval config {
         set synth_options [get_synth_options]
         
         if {[llength $synth_options] > 0} {
-            common::log_info "config" "Applying synthesis options..."
+            common::log_info  "Applying synthesis options..."
             dict for {property value} $synth_options {
                 if {[catch {
                     set_property $property $value [get_runs synth_1]
-                    common::log_info "config" "  Set $property = $value"
+                    common::log_info  "  Set $property = $value"
                 } error_msg]} {
                     common::log_warning "config" "  Failed to set $property: $error_msg"
                 }
@@ -107,41 +107,18 @@ namespace eval config {
         set impl_options [get_impl_options]
         
         if {[llength $impl_options] > 0} {
-            common::log_info "config" "Applying implementation options..."
+            common::log_info  "Applying implementation options..."
             dict for {property value} $impl_options {
                 if {[catch {
                     set_property $property $value [get_runs impl_1]
-                    common::log_info "config" "  Set $property = $value"
+                    common::log_info  "  Set $property = $value"
                 } error_msg]} {
                     common::log_warning "config" "  Failed to set $property: $error_msg"
                 }
             }
         }
     }
-    
-    # Get build file name
-    proc get_build_file_name {} {
-        variable project_info
-        variable device_info
-        
-        set project_name [dict get $project_info project_name]
-        set upper_project_name [string toupper $project_name]
-        
-        if {[dict exists $device_info board_name]} {
-            set upper_board_name [string toupper [dict get $device_info board_name]]
-        } else {
-            set upper_board_name "UNKNOWN"
-        }
-        
-        # Get timestamp
-        set timestamp [clock format [clock seconds] -format "%Y%m%d_%H%M%S"]
-        
-        # Build name
-        set new_name "${upper_project_name}_${upper_board_name}_${timestamp}"
-        
-        return $new_name
-    }
-    
+
     # Convert typed generic to HDL string - FIXED to prevent spaces and format correctly
     proc generic_to_hdl_string {name generic_def} {
         set type [dict get $generic_def type]

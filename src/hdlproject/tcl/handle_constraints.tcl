@@ -3,6 +3,8 @@ namespace eval handle_constraints {
     # Process constraint files from configuration only
     proc process_constraints {files_list} {
         common::log_status "Handling Constraints and TCL files..."
+
+        set constraint_issues false
         
         # Create filesets if needed
         if {[string equal [get_filesets -quiet constrs_1] ""]} {
@@ -54,6 +56,7 @@ namespace eval handle_constraints {
             # Get file name from constraint entry
             if {![dict exists $constraint file]} {
                 common::log_warning "handle_constraints" "Constraint entry missing 'file' key"
+                set constraint_issues true
                 continue
             }
             
@@ -62,6 +65,7 @@ namespace eval handle_constraints {
             # Find the full path from compile order
             if {![dict exists $file_lookup $file_name]} {
                 common::log_warning "handle_constraints" "File '$file_name' specified in config but not found in compile order"
+                set constraint_issues true
                 continue
             }
             
@@ -70,6 +74,7 @@ namespace eval handle_constraints {
             # Check if file exists
             if {![file exists $full_path]} {
                 common::log_warning "handle_constraints" "File not found: $full_path"
+                set constraint_issues true
                 continue
             }
             
@@ -107,6 +112,7 @@ namespace eval handle_constraints {
                 common::log_info "Executing TCL script immediately: $file_name"
                 if {[catch {source $full_path} error_msg]} {
                     common::log_error "handle_constraints" "Error executing TCL script '$file_name': $error_msg"
+                    set constraint_issues true
                     continue
                 }
                 common::log_info "Successfully executed TCL script: $file_name"
@@ -132,10 +138,12 @@ namespace eval handle_constraints {
                     add_files -fileset utils_1 $full_path
                 } else {
                     common::log_warning "handle_constraints" "Unknown fileset '$target_fileset' for TCL file '$file_name', using utils_1"
+                    set constraint_issues true
                     add_files -fileset utils_1 $full_path
                 }
             } else {
                 common::log_warning "handle_constraints" "Unknown file type for: $file_name"
+                set constraint_issues true
                 continue
             }
             
@@ -159,12 +167,17 @@ namespace eval handle_constraints {
                             common::log_info "  Set property $prop_name = $prop_value"
                         } error_msg]} {
                             common::log_warning "handle_constraints" "Failed to set property $prop_name on file '$file_name': $error_msg"
+                            set constraint_issues true
                         }
                     }
                 }
             }
         }
-        
-        return [common::return_success {}]
+
+        if {$constraint_issues} {
+          return [return_error "handle_constraints.tcl" "Issues found"]
+        } else {
+          return [common::return_success {}]
+        }
     }
 }

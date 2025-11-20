@@ -21,9 +21,14 @@ namespace eval handle_source_files {
         foreach file_entry $files_list {
             set file_type [dict get $file_entry type]
             set file_path [dict get $file_entry path]
+          
+            # Only get ver_tag if it exists
+            if {[dict exists $file_entry ver_tag]} {
+                set file_ver_tag [dict get $file_entry ver_tag]
+            } else {
+                set file_ver_tag ""
+            }
 
-            common::log_status "file_type: $file_type, file_path: $file_path"
-            
             # Skip if file doesn't exist
             if {![file exists $file_path]} {
                 common::log_warning "handle_source_files" "File not found: $file_path"
@@ -32,20 +37,25 @@ namespace eval handle_source_files {
             
             # Classify and collect files by type
             switch $file_type {
-                "VHDL@2008" {
-                    lappend vhdl_files [dict create path $file_path type $file_type library [dict get $file_entry library]]
-                }
-                "VHDL@1997" {
-                    lappend vhdl_files [dict create path $file_path type $file_type library [dict get $file_entry library]]
-                }
                 "VHDL" {
-                    lappend vhdl_files [dict create path $file_path type $file_type library [dict get $file_entry library]]
+                  switch $file_ver_tag {
+                    "VHDL2008" {
+                      lappend vhdl_files [dict create path $file_path type VHDL2008 library [dict get $file_entry library]]
+                      common::log_status "Adding file_type: $file_type, file_path: $file_path"
+                    }
+                    default {
+                      lappend vhdl_files [dict create path $file_path type VHDL library [dict get $file_entry library]]
+                      common::log_status "Adding file_type: $file_type, file_path: $file_path"
+                    }
+                  }
                 }
-                "Verilog" {
+                "VERILOG" {
                     lappend verilog_files $file_path
+                    common::log_status "Adding file_type: $file_type, file_path: $file_path"
                 }
-                "Systemverilog" {
+                "SYSTEMVERILOG" {
                     lappend systemverilog_files $file_path
+                    common::log_status "Adding file_type: $file_type, file_path: $file_path"
                 }
             }
         }
@@ -73,15 +83,12 @@ namespace eval handle_source_files {
                 # Get file object
                 set file_obj [get_files -of_objects [get_filesets sources_1] [list "*$path"]]
                 # Set VHDL version
-                if {$type eq "VHDL@2008"} {
+                if {$type eq "VHDL2008"} {
                     set_property -name "file_type" -value "VHDL 2008" -objects $file_obj
                 } else {
                     set_property -name "file_type" -value "VHDL" -objects $file_obj
                 }
                 
-                # TODO: Set library property for VHDL file
-                # This is where library management will be implemented
-                # For now, adding a placeholder comment
                 set_property -name "library" -value $library -objects $file_obj
                 common::log_status "Set library '$library' for VHDL file: [file tail $path]"
             }

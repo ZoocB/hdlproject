@@ -96,7 +96,7 @@ Traditional Vivado workflows involve:
 3. **Xilinx Vivado**
    - Default install location at `/tools/Xilinx/Vivado` (or custom configured path)
 
-4. **hdldepends** (for automatic compile order)
+4. **[hdldepends](https://github.com/pevhall/hdldepends)** (for automatic compile order
    ```bash
    pip install hdldepends
    ```
@@ -140,12 +140,12 @@ hdlproject --help
 
 First, configure your repository with `hdlproject_global_config.yaml` at the root:
 
-```json
-{
-  "project_dir": "projects",
-  "compile_order_script_format": "json",
-  "default_cores_per_project": 2
-}
+```yaml
+"project_dir": "projects",
+"compile_order_script_format": "json",
+"default_cores_per_project": 2
+# global location, if this doesnt exist, will look for "hdldepends_config" inside of the project specific "hdldepends_project_config.yaml"
+"hdldepends_config": "/path/to/hdldepends.json" 
 ```
 
 ### 2. Project Configuration
@@ -171,6 +171,8 @@ synth_options:
 
 impl_options:
   strategy: Performance_ExplorePostRoutePhysOpt
+
+hdldepends_config: "/path/to/hdldepends.json" # optional, this overrides global location
 ```
 
 ### 3. Interactive Mode (Recommended for First Use)
@@ -262,16 +264,6 @@ These directories are gitignored and can be safely deleted.
 
 ### Repository Configuration (`hdlproject_global_config.yaml`)
 
-Place at repository root:
-
-```json
-{
-  "project_dir": "projects",
-  "compile_order_script_format": "json",
-  "default_cores_per_project": 2,
-  "max_parallel_builds": 4
-}
-```
 
 **Options:**
 - `project_dir`: Path to projects directory (relative to repo root)
@@ -307,15 +299,20 @@ project_information:
 
 # Constraint files
 constraints:
-  - file: constraints/timing.xdc
+  - file: constraints/my_file.tcl
     fileset: constrs_1
-    execution: early
+    # the exeuction immediate tag means that this tcl script is immediately executed upon processing into the project and is not added to the project
+    execution: immediate
   - file: constraints/pinout.xdc
     fileset: constrs_1
 
 # Block designs (optional)
 block_designs:
-  - name: system_bd
+  - file: system_bd
+    # Commands are optional but allow for a single base BD to be modified for different project configurations without needing copies with minor changes between files. Ensure that a single project has NO commands so that the BD can be opened and edited still, as commands create a cached copy of the BD and all changes made will not save to a source controlled area. Commands follow the same TCL commands that you would see in the TCL console in the GUI. They are executed immediately upon including the file into the project.
+    commands:
+      - <insert command 1>
+      - <insert command 2>
 
 # Synthesis options
 synth_options:

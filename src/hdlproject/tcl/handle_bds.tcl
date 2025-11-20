@@ -65,9 +65,9 @@ namespace eval handle_bds {
                     set local_bd_path [_copy_bd_to_local_project $bd_filename $bd_filepath $local_bd_dir]
                     add_files -fileset sources_1 $local_bd_path
                     
-                    # Attempt to open bd
-                    if {[catch {eval open_bd_design {$local_bd_path}} result]} {
-                        return [common::return_error "handle_bds" "Issue opening bd design $local_bd_path: $result"]
+                    open_bd_design $local_bd_path
+                    if {[current_bd_design] eq ""} {
+                        return [common::return_error "handle_bds" "Failed to open BD design $local_bd_path"]
                     } else {
                         common::log_info "Opening BD Design $local_bd_path"
                     }

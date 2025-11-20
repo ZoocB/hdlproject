@@ -65,7 +65,8 @@ class Constraint(FlexibleModel):
 
 class BlockDesign(FlexibleModel):
     """Block design"""
-    name: str
+    file: str
+    commands: Optional[list[str]] = None
 
 
 class ProjectInformation(FlexibleModel):

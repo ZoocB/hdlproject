@@ -236,6 +236,9 @@ if {[file isdirectory $dir]} {
     common::log_status "Appended system $dir to LD_LIBRARY_PATH"
 }
 
+# Initialise allow for user scripts to call internal functions (use set_build_name)
+build_context::initialise
+
 # ===============================================================================
 # ========================== Load compile order JSON ============================
 # ===============================================================================
@@ -307,7 +310,7 @@ if {$board_name ne ""} {
 }
 
 # Set standard project properties
-set_property -name "default_lib" -value "xil_defaultlib" -objects $obj
+set_property -name "default_lib" -value "work" -objects $obj
 set_property -name "enable_vhdl_2008" -value "1" -objects $obj
 set_property -name "ip_cache_permissions" -value "read write" -objects $obj
 set_property -name "ip_output_repo" -value "$vivado_project_dir/${project_name}.cache/ip" -objects $obj
@@ -336,7 +339,7 @@ handle_source_files::create_sim_fileset
 # ===============================================================================
 # ======================= Process project components ============================
 # ===============================================================================
-# Handle XCIs (use standardised xci_dir)
+# Handle XCIs
 set result [handle_xcis::process_xcis $files_list $vivado_project_dir $script_mode $xci_dir]
 if {[dict get $result status] eq "error"} {
     puts "handle_xcis::process_xcis error"
@@ -352,7 +355,15 @@ if {[dict get $result status] eq "error"} {
     puts "handle_source_files::process_source_files success"
 }
 
-# Handle Block Designs (use standardised bd_dir)
+# Handle Constraints and TCL files
+set result [handle_constraints::process_constraints $files_list]
+if {[dict get $result status] eq "error"} {
+    puts "handle_constraints::process_constraints error"
+} else {
+    puts "handle_constraints::process_constraints success"
+}
+
+# Handle Block Designs
 set result [handle_bds::process_bds $files_list $vivado_project_dir $bd_dir]
 if {[dict get $result status] eq "error"} {
     puts "handle_bds::process_bds error"
@@ -366,14 +377,6 @@ if {[dict get $result status] eq "error"} {
     puts "handle_source_files::set_top_level error"
 } else {
     puts "handle_source_files::set_top_level success"
-}
-
-# Handle Constraints and TCL files
-set result [handle_constraints::process_constraints $files_list]
-if {[dict get $result status] eq "error"} {
-    puts "handle_constraints::process_constraints error"
-} else {
-    puts "handle_constraints::process_constraints success"
 }
 
 # Configure synthesis settings

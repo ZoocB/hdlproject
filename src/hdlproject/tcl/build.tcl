@@ -6,11 +6,14 @@ namespace eval build {
         # Get project name
         set project_info [config::get_project_info]
         set project_name [dict get $project_info project_name]
-        set file_name [config::get_build_file_name]
+        
+        # Get build name from build context
+        set file_name [build_context::get_build_name]
 
         # Display information about build
         common::log_status ""
         common::log_status "================================="
+        common::log_status "Build name: $file_name"
         common::log_status "Various logging information file locations"
         common::log_status "(NOTE: if build fails, some of these files may not generated)"
         common::log_status "Terminal Logs:         $project_dir/output.log"
@@ -109,5 +112,82 @@ namespace eval build {
         cd $original_dir
         
         return [common::return_success {}]
+    }
+}
+
+namespace eval build_context {
+    variable build_name ""
+    
+    # initialise with default name
+    proc initialise {} {
+        variable build_name
+        
+        # Get config info
+        set project_info [config::get_project_info]
+        set device_info [config::get_device_info]
+        
+        set project_name [dict get $project_info project_name]
+        set upper_project_name [string toupper $project_name]
+        
+        if {[dict exists $device_info board_name]} {
+            set board_name [dict get $device_info board_name]
+            set upper_board_name [string toupper $board_name]
+        } else {
+            set upper_board_name "UNKNOWN"
+        }
+        
+        # Get git info
+        if {[catch {exec git rev-parse --abbrev-ref HEAD} git_branch]} {
+            set git_branch "unknown"
+        }
+        
+        if {[catch {exec git config user.name} git_user_name]} {
+            set git_user_name "Unknown User"
+        }
+        set git_initials [get_initials $git_user_name]
+        
+        # Default version and build info
+        set major_version "0"
+        set minor_version "0"
+        set patch_version "0"
+        set build_number "0"
+        set build_revision "0"
+        
+        # Generate metadata
+        if {$build_revision == 0} {
+            set meta_data "${git_initials}.${git_branch}"
+        } else {
+            set meta_data "${git_initials}.${git_branch}.r${build_revision}"
+        }
+        
+        # Generate default build name
+        set build_name "${upper_project_name}_${upper_board_name}_v${major_version}.${minor_version}.${patch_version}+${build_number}.${meta_data}"
+        
+        common::log_info  "Default build name: $build_name"
+    }
+    
+    # Helper function to get initials from a name
+    proc get_initials {name} {
+        set parts [split $name " "]
+        set initials ""
+        foreach part $parts {
+            if {[string length $part] > 0} {
+                append initials [string toupper [string index $part 0]]
+            }
+        }
+        return $initials
+    }
+    
+    # User-facing function to override the build name
+    proc set_build_name {name} {
+        variable build_name
+        set build_name $name
+        common::log_info  "Build name set to: $build_name"
+    }
+    
+    # Get the current build name
+    proc get_build_name {} {
+        variable build_name
+        return $build_name
     }
 }
