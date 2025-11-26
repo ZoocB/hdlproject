@@ -20,7 +20,7 @@ namespace eval handle_source_files {
         # Process each file entry
         foreach file_entry $files_list {
             set file_type [dict get $file_entry type]
-            set file_path [dict get $file_entry path]
+            set file_path [file normalize [dict get $file_entry path]]
           
             # Only get ver_tag if it exists
             if {[dict exists $file_entry ver_tag]} {

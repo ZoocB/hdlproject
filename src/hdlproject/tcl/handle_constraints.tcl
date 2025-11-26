@@ -69,8 +69,8 @@ namespace eval handle_constraints {
                 continue
             }
             
-            set full_path [dict get $file_lookup $file_name]
-            
+            set full_path [file normalize [dict get $file_lookup $file_name]]
+
             # Check if file exists
             if {![file exists $full_path]} {
                 common::log_warning "handle_constraints" "File not found: $full_path"
