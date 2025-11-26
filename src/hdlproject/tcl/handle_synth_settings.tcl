@@ -1,8 +1,18 @@
-# handle_synth_settings.tcl - Synthesis settings with corrected generic handling
+# handle_synth_settings.tcl - Synthesis settings with improved logging
 
 namespace eval handle_synth_settings {
+    # Module names for logging
+    variable MODULE_NAME_CONFIG "handle_synth_settings::configure"
+    variable MODULE_NAME_OPTIONS "handle_synth_settings::apply_options"
+    variable MODULE_NAME_GENERICS "handle_synth_settings::apply_generics"
+    
     # Configure synthesis settings
     proc configure_synth_settings {part_name vivado_version_year} {
+        variable MODULE_NAME_CONFIG
+        
+        # Initialise logging for this module
+        common::log_init $MODULE_NAME_CONFIG
+        
         common::log_status "Setting Synthesis Settings..."
         
         # Create synth_1 run if it doesn't exist
@@ -31,12 +41,20 @@ namespace eval handle_synth_settings {
         # Default options
         set_property -name "STEPS.SYNTH_DESIGN.ARGS.ASSERT" -value "true" -objects [get_runs synth_1]
         
-        return [common::return_success {}]
+        # Return result using automatic tracking
+        return [common::report_step_result "handle_synth_settings::configure_synth_settings" $MODULE_NAME_CONFIG]
     }
     
     # Apply custom synthesis options (NOT for generics!)
     proc apply_custom_synth_options {} {
+        variable MODULE_NAME_OPTIONS
+        
+        # Initialise logging for this module
+        common::log_init $MODULE_NAME_OPTIONS
+        
         common::log_status "Applying custom synthesis options..."
+        
+        set options_applied 0
         
         # Get synthesis options using the config namespace function
         set synth_options [config::get_synth_options]
@@ -48,19 +66,27 @@ namespace eval handle_synth_settings {
                 if {[catch {
                     set_property -name $key -value $value -objects [get_runs synth_1]
                     common::log_info "\t\toption: $key = $value"
+                    incr options_applied
                 } err]} {
-                    common::log_warning "handle_synth_settings" "Failed to set option $key: $err"
+                    common::log_warning $MODULE_NAME_OPTIONS "Failed to set option $key: $err"
                 }
             }
         } else {
             common::log_info "\tNo custom synthesis options defined"
         }
         
-        return [common::return_success {}]
+        # Return result using automatic tracking
+        return [common::report_step_result "handle_synth_settings::apply_custom_synth_options" $MODULE_NAME_OPTIONS \
+            [dict create options_applied $options_applied]]
     }
     
     # Apply top-level generics to synthesis
     proc apply_top_level_generics {} {
+        variable MODULE_NAME_GENERICS
+        
+        # Initialise logging for this module
+        common::log_init $MODULE_NAME_GENERICS
+        
         common::log_status "Applying top-level generics..."
         
         # Get HDL formatted generics from config
@@ -70,7 +96,7 @@ namespace eval handle_synth_settings {
         
         if {$hdl_generics eq ""} {
             common::log_info "\tNo top-level generics defined"
-            return [common::return_success {}]
+            return [common::report_step_result "handle_synth_settings::apply_top_level_generics" $MODULE_NAME_GENERICS]
         }
         
         # MORE OPTIONS is the correct property for generics
@@ -98,8 +124,8 @@ namespace eval handle_synth_settings {
         if {[catch {
             set_property -name $more_options -value $new_options -objects [get_runs synth_1]
         } err]} {
-            common::log_error "handle_synth_settings" "Failed to set MORE OPTIONS: $err"
-            return [common::return_error "handle_synth_settings" "Failed to apply generics: $err"]
+            common::log_error $MODULE_NAME_GENERICS "Failed to set MORE OPTIONS: $err"
+            return [common::report_step_result "handle_synth_settings::apply_top_level_generics" $MODULE_NAME_GENERICS]
         }
         
         # Log what we applied
@@ -116,6 +142,7 @@ namespace eval handle_synth_settings {
         # Set the current synth run
         current_run -synthesis [get_runs synth_1]
         
-        return [common::return_success {}]
+        # Return result using automatic tracking
+        return [common::report_step_result "handle_synth_settings::apply_top_level_generics" $MODULE_NAME_GENERICS]
     }
 }

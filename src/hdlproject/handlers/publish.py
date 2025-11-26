@@ -1,5 +1,5 @@
 # handlers/publish.py
-"""Publish handler - refactored with service composition"""
+"""Publish handler - refactored with service composition and step result patterns"""
 
 import subprocess
 import yaml
@@ -31,7 +31,7 @@ class PublishHandler(BaseHandler):
     CONFIG = OperationConfig(
         name="publish",
         tcl_mode="",  # Not used - pure git operation
-        step_patterns=[],  # No Vivado output
+        step_patterns=[],  # No Vivado output - steps managed manually
         operation_steps=[
             "Checking Git Status",
             "Loading Project Configurations",
@@ -87,9 +87,14 @@ class PublishHandler(BaseHandler):
 
     def execute(self, projects: list[str], options: PublishOptions) -> None:
         """Override execute to handle git operations on all projects"""
+        # Import here to avoid circular import
+        from hdlproject.handlers.services.status_manager import StatusManager
+
         try:
             # Load projects without Vivado validation (publish doesn't need Vivado)
-            project_contexts = self.project_loader.load_projects(projects, self.CONFIG.name, check_vivado=False)
+            project_contexts = self.project_loader.load_projects(
+                projects, self.CONFIG.name, check_vivado=False
+            )
 
             # Setup jenkins directory
             self.jenkins_dir.mkdir(exist_ok=True)
@@ -102,12 +107,14 @@ class PublishHandler(BaseHandler):
                 environment=self.environment,
                 vivado_executor=self.vivado_executor,
                 status_manager=None,  # Created below
-                compile_order_service=self.compile_order_service,
+                compile_order_service=None,
             )
 
             # Create status manager for git operations
             self.status_manager = StatusManager(
-                operation_name=self.CONFIG.name, operation_steps=self.CONFIG.operation_steps, project_names=["git-operations"]
+                operation_name=self.CONFIG.name,
+                operation_steps=self.CONFIG.operation_steps,
+                project_names=["git-operations"],
             )
             context.status_manager = self.status_manager
 
@@ -128,10 +135,28 @@ class PublishHandler(BaseHandler):
                     f"  cd {self.repository_root}\n"
                     f"  git pull origin {self._get_current_branch()}"
                 )
+            # Mark step as success
+            self.status_manager.update_step(
+                "git-operations", "Checking Git Status", step_result="success"
+            )
+
+            # Load project configurations
+            self.status_manager.update_step(
+                "git-operations", "Loading Project Configurations"
+            )
+            # Already loaded in configure(), mark as success
+            self.status_manager.update_step(
+                "git-operations",
+                "Loading Project Configurations",
+                step_result="success",
+            )
 
             # Update build token
             self.status_manager.update_step("git-operations", "Updating Build Token")
             token = self._update_build_token(projects)
+            self.status_manager.update_step(
+                "git-operations", "Updating Build Token", step_result="success"
+            )
 
             # Check if we have a local commit to amend, or need to create new commit
             has_local_commit = self._has_unpushed_commits()
@@ -140,27 +165,40 @@ class PublishHandler(BaseHandler):
                 # Amend existing commit
                 self.status_manager.update_step("git-operations", "Amending Commit")
                 self._amend_commit()
+                self.status_manager.update_step(
+                    "git-operations", "Amending Commit", step_result="success"
+                )
             else:
                 # Create new commit with token
-                self.status_manager.update_step("git-operations", "Creating Commit")
+                self.status_manager.update_step("git-operations", "Amending Commit")
                 self._create_commit(token)
+                self.status_manager.update_step(
+                    "git-operations", "Amending Commit", step_result="success"
+                )
 
             # Push changes
             self.status_manager.update_step("git-operations", "Pushing Changes")
             self._push_changes()
+            self.status_manager.update_step(
+                "git-operations", "Pushing Changes", step_result="success"
+            )
 
             # Complete
-            self.status_manager.update_step("git-operations", "Complete")
+            self.status_manager.update_step(
+                "git-operations", "Complete", step_result="success"
+            )
             self.status_manager.complete_project("git-operations", success=True)
 
-            print(f"\nÃ¢Å“â€œ Successfully published {len(projects)} project(s)")
+            print(f"\n✓ Successfully published {len(projects)} project(s)")
             print(f"  Token: {token}")
             print(f"  Branch: {self._get_current_branch()}")
 
         except Exception as e:
             logger.error(f"Publish failed: {e}")
             if self.status_manager:
-                self.status_manager.complete_project("git-operations", success=False, message=str(e))
+                self.status_manager.complete_project(
+                    "git-operations", success=False, message=str(e)
+                )
             raise
         finally:
             if self.status_manager:
@@ -172,16 +210,28 @@ class PublishHandler(BaseHandler):
             branch = self._get_current_branch()
 
             # Fetch latest from remote
-            subprocess.run(["git", "fetch", "origin", branch], capture_output=True, text=True, check=True, cwd=self.repository_root)
+            subprocess.run(
+                ["git", "fetch", "origin", branch],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=self.repository_root,
+            )
 
             # Check if behind
             result = subprocess.run(
-                ["git", "rev-list", "--count", f"HEAD..origin/{branch}"], capture_output=True, text=True, check=True, cwd=self.repository_root
+                ["git", "rev-list", "--count", f"HEAD..origin/{branch}"],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=self.repository_root,
             )
 
             commits_behind = int(result.stdout.strip())
             if commits_behind > 0:
-                logger.warning(f"Branch is {commits_behind} commit(s) behind origin/{branch}")
+                logger.warning(
+                    f"Branch is {commits_behind} commit(s) behind origin/{branch}"
+                )
                 return True
 
             return False
@@ -198,7 +248,11 @@ class PublishHandler(BaseHandler):
 
             # Check if ahead of remote
             result = subprocess.run(
-                ["git", "rev-list", "--count", f"origin/{branch}..HEAD"], capture_output=True, text=True, check=True, cwd=self.repository_root
+                ["git", "rev-list", "--count", f"origin/{branch}..HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=self.repository_root,
             )
 
             commits_ahead = int(result.stdout.strip())
@@ -212,7 +266,9 @@ class PublishHandler(BaseHandler):
             return has_commits
 
         except subprocess.CalledProcessError as e:
-            error_msg = f"Failed to check unpushed commits: {e.stderr if e.stderr else str(e)}"
+            error_msg = (
+                f"Failed to check unpushed commits: {e.stderr if e.stderr else str(e)}"
+            )
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
@@ -220,18 +276,30 @@ class PublishHandler(BaseHandler):
         """Get current git branch"""
         try:
             result = subprocess.run(
-                ["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, check=True, cwd=self.repository_root
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=self.repository_root,
             )
             return result.stdout.strip()
         except subprocess.CalledProcessError as e:
-            error_msg = f"Failed to get current branch: {e.stderr if e.stderr else str(e)}"
+            error_msg = (
+                f"Failed to get current branch: {e.stderr if e.stderr else str(e)}"
+            )
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
 
     def _get_commit_hash(self) -> str:
         """Get current commit hash"""
         try:
-            result = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True, cwd=self.repository_root)
+            result = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=self.repository_root,
+            )
             return result.stdout.strip()
         except subprocess.CalledProcessError as e:
             error_msg = f"Failed to get commit hash: {e.stderr if e.stderr else str(e)}"
@@ -254,7 +322,9 @@ class PublishHandler(BaseHandler):
         for project in projects:
             if project in self.project_configs:
                 config = self.project_configs[project]
-                project_data[project] = {"vivado_version": config.vivado_version.full_version}
+                project_data[project] = {
+                    "vivado_version": config.vivado_version.full_version
+                }
 
         # Write token file
         build_data = {"token": token, "projects": project_data}
@@ -271,10 +341,22 @@ class PublishHandler(BaseHandler):
             relative_path = self.token_file.relative_to(self.repository_root)
 
             # Stage the token file
-            result = subprocess.run(["git", "add", str(relative_path)], capture_output=True, text=True, check=True, cwd=self.repository_root)
+            subprocess.run(
+                ["git", "add", str(relative_path)],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=self.repository_root,
+            )
 
             # Amend commit
-            result = subprocess.run(["git", "commit", "--amend", "--no-edit"], capture_output=True, text=True, check=True, cwd=self.repository_root)
+            subprocess.run(
+                ["git", "commit", "--amend", "--no-edit"],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=self.repository_root,
+            )
 
             logger.info("Amended commit with build token")
 
@@ -289,11 +371,23 @@ class PublishHandler(BaseHandler):
             relative_path = self.token_file.relative_to(self.repository_root)
 
             # Stage the token file
-            result = subprocess.run(["git", "add", str(relative_path)], capture_output=True, text=True, check=True, cwd=self.repository_root)
+            subprocess.run(
+                ["git", "add", str(relative_path)],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=self.repository_root,
+            )
 
             # Create commit with token in message
             commit_message = f"publish-commit-cicd: token {token}"
-            result = subprocess.run(["git", "commit", "-m", commit_message], capture_output=True, text=True, check=True, cwd=self.repository_root)
+            subprocess.run(
+                ["git", "commit", "-m", commit_message],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=self.repository_root,
+            )
 
             logger.info(f"Created new commit: {commit_message}")
 
@@ -307,7 +401,13 @@ class PublishHandler(BaseHandler):
         branch = self._get_current_branch()
 
         try:
-            result = subprocess.run(["git", "push", "origin", branch], capture_output=True, text=True, check=True, cwd=self.repository_root)
+            subprocess.run(
+                ["git", "push", "origin", branch, "--force-with-lease"],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=self.repository_root,
+            )
 
             logger.info(f"Pushed to {branch}")
 
@@ -330,7 +430,7 @@ class PublishHandler(BaseHandler):
             error_lines.append("  - Authentication failed (check credentials/SSH keys)")
             error_lines.append("  - Branch protection rules preventing push")
             error_lines.append("  - Network connectivity issues")
-            error_lines.append(f"  - Remote 'origin' not configured correctly")
+            error_lines.append("  - Remote 'origin' not configured correctly")
             error_lines.append("\nTry running manually to see full error:")
             error_lines.append(f"  cd {self.repository_root}")
             error_lines.append(f"  git push origin {branch}")
@@ -338,10 +438,6 @@ class PublishHandler(BaseHandler):
             error_msg = "\n".join(error_lines)
             logger.error(error_msg)
             raise RuntimeError(error_msg) from e
-
-
-# Import StatusManager here to avoid circular import
-from hdlproject.handlers.services.status_manager import StatusManager
 
 
 # Register handler
@@ -352,7 +448,9 @@ register_handler(
         options_class=PublishOptions,
         description="Publish projects to CI/CD pipeline",
         menu_name="Publish to CI/CD",
-        cli_arguments=[{"name": "projects", "nargs": "+", "help": "Project names to publish"}],
+        cli_arguments=[
+            {"name": "projects", "nargs": "+", "help": "Project names to publish"}
+        ],
         supports_multiple=True,
     )
 )

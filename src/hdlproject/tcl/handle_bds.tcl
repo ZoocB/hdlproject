@@ -1,8 +1,19 @@
-# handle_bds.tcl - Block design handling
+# handle_bds.tcl - Block design handling with improved logging
 namespace eval handle_bds {
+    # Module name for logging
+    variable MODULE_NAME "handle_bds"
+    
     # Process block designs from JSON
     proc process_bds {files_list project_dir local_bd_dir} {
+        variable MODULE_NAME
+        
+        # Initialise logging for this module
+        common::log_init $MODULE_NAME
+        
         common::log_status "Handle BD files..."
+        
+        set bd_count 0
+        set commands_executed 0
         
         # Get configuration
         set config_dict [config::get_config]
@@ -18,7 +29,7 @@ namespace eval handle_bds {
         # Check if we have any BD files to process
         if {[llength $bd_files] == 0} {
             common::log_info "No block design files found in files_list"
-            return [common::return_success {}]
+            return [common::report_step_result "handle_bds::process_bds" $MODULE_NAME]
         }
         
         # Get block designs from configuration (optional, for commands only)
@@ -31,7 +42,7 @@ namespace eval handle_bds {
         set bd_commands_dict {}
         foreach bd_entry $block_designs {
             if {![dict exists $bd_entry file]} {
-                common::log_warning "handle_bds" "Missing 'file' key in block design entry"
+                common::log_warning $MODULE_NAME "Missing 'file' key in block design entry"
                 continue
             }
             
@@ -39,7 +50,9 @@ namespace eval handle_bds {
             
             # Check if this BD exists in files_list
             if {[catch {_check_bd_file_matches $bd_filename $bd_files} bd_filepath]} {
-                return [common::return_error "handle_bds" "BD '$bd_filename' defined in configuration but not found in files_list"]
+                common::log_error $MODULE_NAME "BD '$bd_filename' defined in configuration but not found in files_list"
+                # Continue processing other BDs instead of returning error
+                continue
             }
             
             # Store commands if they exist
@@ -67,7 +80,8 @@ namespace eval handle_bds {
                     
                     open_bd_design $local_bd_path
                     if {[current_bd_design] eq ""} {
-                        return [common::return_error "handle_bds" "Failed to open BD design $local_bd_path"]
+                        common::log_error $MODULE_NAME "Failed to open BD design $local_bd_path"
+                        continue
                     } else {
                         common::log_info "Opening BD Design $local_bd_path"
                     }
@@ -83,12 +97,13 @@ namespace eval handle_bds {
                         set output [dict get $result result]
                         
                         if {$status == "error"} {
-                            common::log_error "handle_bds" "cmd: $command, msg: $output"
+                            common::log_error $MODULE_NAME "cmd: $command, msg: $output"
                             set bd_error 1
                         } elseif {$status == "warning"} {
-                            common::log_warning "handle_bds" "cmd: $command, msg: $output"
+                            common::log_warning $MODULE_NAME "cmd: $command, msg: $output"
                         } else {
                             common::log_info "cmd: $command, msg: SUCCESS"
+                            incr commands_executed
                         }
                     }
                     
@@ -96,19 +111,25 @@ namespace eval handle_bds {
                     if {$bd_error == 0} {
                         eval save_bd_design
                     }
+                    incr bd_count
                 } else {
                     # No commands for this BD, just add it to the project
                     common::log_debug "Adding BD without commands: $bd_filepath"
                     add_files -fileset sources_1 $bd_filepath
+                    incr bd_count
                 }
             }
         } error_msg]} {
             if {$error_msg ne ""} {
-                return [common::return_error "handle_bds" "Processing block designs: $error_msg"]
+                common::log_error $MODULE_NAME "Processing block designs: $error_msg"
             }
         }
         
-        return [common::return_success {}]
+        common::log_status "Block design handling complete. Processed $bd_count BD(s), executed $commands_executed command(s)."
+        
+        # Return result using automatic tracking
+        return [common::report_step_result "handle_bds::process_bds" $MODULE_NAME \
+            [dict create bd_count $bd_count commands_executed $commands_executed]]
     }
     
     # Check if BD filename matches one in the list
@@ -165,6 +186,8 @@ namespace eval handle_bds {
     
     # Execute BD commands
     proc _execute_bd_commands {commands} {
+        variable MODULE_NAME
+        
         # Initialise variables
         set current_command ""
         set in_multiline 0

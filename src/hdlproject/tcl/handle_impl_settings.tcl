@@ -1,8 +1,17 @@
-# handle_impl_settings.tcl - Implementation settings
+# handle_impl_settings.tcl - Implementation settings with improved logging
 
 namespace eval handle_impl_settings {
+    # Module names for logging
+    variable MODULE_NAME_CONFIG "handle_impl_settings::configure"
+    variable MODULE_NAME_OPTIONS "handle_impl_settings::apply_options"
+    
     # Configure implementation settings
     proc configure_impl_settings {part_name vivado_version_year} {
+        variable MODULE_NAME_CONFIG
+        
+        # Initialise logging for this module
+        common::log_init $MODULE_NAME_CONFIG
+        
         common::log_status "Setting Implementation Settings..."
         
         # Create or update impl_1 run
@@ -35,12 +44,20 @@ namespace eval handle_impl_settings {
         # Set the current impl run
         current_run -implementation [get_runs impl_1]
         
-        return [common::return_success {}]
+        # Return result using automatic tracking
+        return [common::report_step_result "handle_impl_settings::configure_impl_settings" $MODULE_NAME_CONFIG]
     }
     
     # Apply custom implementation options
     proc apply_custom_impl_options {} {
+        variable MODULE_NAME_OPTIONS
+        
+        # Initialise logging for this module
+        common::log_init $MODULE_NAME_OPTIONS
+        
         common::log_status "Applying custom implementation options..."
+        
+        set options_applied 0
         
         # Get implementation options using the config namespace function
         set impl_options [config::get_impl_options]
@@ -52,15 +69,18 @@ namespace eval handle_impl_settings {
                 if {[catch {
                     set_property -name $key -value $value -objects [get_runs impl_1]
                     common::log_info "\t\toption: $key = $value"
+                    incr options_applied
                 } err]} {
-                    common::log_warning "handle_impl_settings" "Failed to set option $key: $err"
+                    common::log_warning $MODULE_NAME_OPTIONS "Failed to set option $key: $err"
                 }
             }
         } else {
             common::log_info "\tNo custom implementation options defined"
         }
         
-        return [common::return_success {}]
+        # Return result using automatic tracking
+        return [common::report_step_result "handle_impl_settings::apply_custom_impl_options" $MODULE_NAME_OPTIONS \
+            [dict create options_applied $options_applied]]
     }
     
     # Create implementation reports
@@ -152,7 +172,7 @@ namespace eval handle_impl_settings {
             set_property -name "is_enabled" -value "0" -objects $obj
         }
         
-        # Create place timing report
+        # Create 'impl_1_place_report_timing_summary_0' report
         if {[string equal [get_report_configs -of_objects [get_runs impl_1] impl_1_place_report_timing_summary_0] ""]} {
             create_report_config -report_name impl_1_place_report_timing_summary_0 -report_type report_timing_summary:1.0 -steps place_design -runs impl_1
         }

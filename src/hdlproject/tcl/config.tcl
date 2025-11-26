@@ -51,7 +51,6 @@ namespace eval config {
             set options [dict get $config_dict synth_options]
             # Handle both dictionary and list formats
             if {[llength $options] == 1 && [string is list $options]} {
-                # Legacy list format - check if it's a list with one dict
                 set first_item [lindex $options 0]
                 if {[string match "*\{*" $first_item]} {
                     # It's a list containing a dict, extract the dict
@@ -72,7 +71,6 @@ namespace eval config {
             set options [dict get $config_dict impl_options]
             # Handle both dictionary and list formats
             if {[llength $options] == 1 && [string is list $options]} {
-                # Legacy list format - check if it's a list with one dict
                 set first_item [lindex $options 0]
                 if {[string match "*\{*" $first_item]} {
                     # It's a list containing a dict, extract the dict

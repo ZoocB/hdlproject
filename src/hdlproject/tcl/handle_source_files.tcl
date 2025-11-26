@@ -1,14 +1,22 @@
-# handle_source_files.tcl - Source file handling
+# handle_source_files.tcl - Source file handling with improved logging
 namespace eval handle_source_files {
+    # Module names for logging
+    variable MODULE_NAME "handle_source_files"
+    variable MODULE_NAME_TOP "handle_source_files::set_top_level"
+    
     variable vhdl_files {}
     variable verilog_files {}
     variable systemverilog_files {}
     
     # Process source files from JSON
     proc process_source_files {files_list} {
+        variable MODULE_NAME
         variable vhdl_files
         variable verilog_files
         variable systemverilog_files
+        
+        # Initialise logging for this module
+        common::log_init $MODULE_NAME
         
         common::log_status "Handle HDL Source Files..."
         
@@ -16,6 +24,9 @@ namespace eval handle_source_files {
         set vhdl_files {}
         set verilog_files {}
         set systemverilog_files {}
+        
+        set files_added 0
+        set files_skipped 0
         
         # Process each file entry
         foreach file_entry $files_list {
@@ -31,7 +42,8 @@ namespace eval handle_source_files {
 
             # Skip if file doesn't exist
             if {![file exists $file_path]} {
-                common::log_warning "handle_source_files" "File not found: $file_path"
+                common::log_warning $MODULE_NAME "File not found: $file_path"
+                incr files_skipped
                 continue
             }
             
@@ -42,20 +54,24 @@ namespace eval handle_source_files {
                     "VHDL2008" {
                       lappend vhdl_files [dict create path $file_path type VHDL2008 library [dict get $file_entry library]]
                       common::log_status "Adding file_type: $file_type, file_path: $file_path"
+                      incr files_added
                     }
                     default {
                       lappend vhdl_files [dict create path $file_path type VHDL library [dict get $file_entry library]]
                       common::log_status "Adding file_type: $file_type, file_path: $file_path"
+                      incr files_added
                     }
                   }
                 }
                 "VERILOG" {
                     lappend verilog_files $file_path
                     common::log_status "Adding file_type: $file_type, file_path: $file_path"
+                    incr files_added
                 }
                 "SYSTEMVERILOG" {
                     lappend systemverilog_files $file_path
                     common::log_status "Adding file_type: $file_type, file_path: $file_path"
+                    incr files_added
                 }
             }
         }
@@ -110,14 +126,25 @@ namespace eval handle_source_files {
             }
         }
         
-        return [common::return_success [dict create \
-            vhdl_files $vhdl_files \
-            verilog_files $verilog_files \
-            systemverilog_files $systemverilog_files]]
+        common::log_status "Source file handling complete. Added $files_added file(s), skipped $files_skipped file(s)."
+        
+        # Return result using automatic tracking
+        return [common::report_step_result "handle_source_files::process_source_files" $MODULE_NAME \
+            [dict create \
+                vhdl_files $vhdl_files \
+                verilog_files $verilog_files \
+                systemverilog_files $systemverilog_files \
+                files_added $files_added \
+                files_skipped $files_skipped]]
     }
     
     # Set top level file
     proc set_top_level {top_level_file_name} {
+        variable MODULE_NAME_TOP
+        
+        # Initialise logging for this module
+        common::log_init $MODULE_NAME_TOP
+        
         # Set top level for sources_1 fileset
         set obj [get_filesets sources_1]
         set_property -name "top" -value "$top_level_file_name" -objects $obj
@@ -131,7 +158,8 @@ namespace eval handle_source_files {
             set_property -name "top_lib" -value "xil_defaultlib" -objects $obj
         }
         
-        return [common::return_success {}]
+        # Return result using automatic tracking
+        return [common::report_step_result "handle_source_files::set_top_level" $MODULE_NAME_TOP]
     }
     
     # Create simulation fileset if needed

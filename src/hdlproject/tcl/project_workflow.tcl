@@ -121,6 +121,17 @@ proc print_usage {} {
     puts "  vivado -mode tcl -source project_workflow.tcl -tclargs --mode build --vivado-project-dir ./build/project --project-root . --cores 8"
 }
 
+# Helper proc to handle step results - returns 1 if should exit due to error
+proc handle_step_result {result step_name} {
+    set status [dict get $result status]
+    
+    # Only exit on actual errors, not warnings
+    if {$status eq "error"} {
+        return 1
+    }
+    return 0
+}
+
 # Main script starts here
 common::log_status "======= Vivado Project Management System ======="
 
@@ -218,18 +229,12 @@ if {[dict exists $device_info vivado_version_sub]} {
     set vivado_version_sub [lindex [split [version -short] .] 1]
 }
 
-# # Fix LD_LIBRARY_PATH if needed
-# set dir "/lib/x86_64-linux-gnu"
-# if {[file isdirectory $dir]} {
-#     set env(OLD_LD_LIBRARY_PATH) $env(LD_LIBRARY_PATH)
-#     set env(LD_LIBRARY_PATH) "$dir:$env(LD_LIBRARY_PATH)"
-#     common::log_status "Using system $dir for LD_LIBRARY_PATH"
-# } else {
-#     common::log_status "Directory $dir does not exist. Using Vivado LD_LIBRARY_PATH."
-# }
+# ===============================================================================
+# ============================= System Configuration ============================
+# ===============================================================================
 
-# Append system libraries AFTER Vivado libraries
-set dir "/lib/x86_64-linux-gnu"
+# Check for libcrypt library and append to LD_LIBRARY_PATH if needed (for Python bindings)
+set dir "/usr/lib/x86_64-linux-gnu/"
 if {[file isdirectory $dir]} {
     set env(OLD_LD_LIBRARY_PATH) $env(LD_LIBRARY_PATH)
     set env(LD_LIBRARY_PATH) "$env(LD_LIBRARY_PATH):$dir"
@@ -339,84 +344,89 @@ handle_source_files::create_sim_fileset
 # ===============================================================================
 # ======================= Process project components ============================
 # ===============================================================================
+
+# Track overall workflow status
+set workflow_has_warnings 0
+set workflow_has_errors 0
+
 # Handle XCIs
 set result [handle_xcis::process_xcis $files_list $vivado_project_dir $script_mode $xci_dir]
 if {[dict get $result status] eq "error"} {
-    puts "handle_xcis::process_xcis error"
-} else {
-    puts "handle_xcis::process_xcis success"
+    set workflow_has_errors 1
+} elseif {[dict get $result status] eq "warning"} {
+    set workflow_has_warnings 1
 }
 
 # Handle source files
 set result [handle_source_files::process_source_files $files_list]
 if {[dict get $result status] eq "error"} {
-    puts "handle_source_files::process_source_files error"
-} else {
-    puts "handle_source_files::process_source_files success"
+    set workflow_has_errors 1
+} elseif {[dict get $result status] eq "warning"} {
+    set workflow_has_warnings 1
 }
 
 # Handle Constraints and TCL files
 set result [handle_constraints::process_constraints $files_list]
 if {[dict get $result status] eq "error"} {
-    puts "handle_constraints::process_constraints error"
-} else {
-    puts "handle_constraints::process_constraints success"
+    set workflow_has_errors 1
+} elseif {[dict get $result status] eq "warning"} {
+    set workflow_has_warnings 1
 }
 
 # Handle Block Designs
 set result [handle_bds::process_bds $files_list $vivado_project_dir $bd_dir]
 if {[dict get $result status] eq "error"} {
-    puts "handle_bds::process_bds error"
-} else {
-    puts "handle_bds::process_bds success"
+    set workflow_has_errors 1
+} elseif {[dict get $result status] eq "warning"} {
+    set workflow_has_warnings 1
 }
 
 # Set top level
 set result [handle_source_files::set_top_level $top_level_file_name]
 if {[dict get $result status] eq "error"} {
-    puts "handle_source_files::set_top_level error"
-} else {
-    puts "handle_source_files::set_top_level success"
+    set workflow_has_errors 1
+} elseif {[dict get $result status] eq "warning"} {
+    set workflow_has_warnings 1
 }
 
 # Configure synthesis settings
 set result [handle_synth_settings::configure_synth_settings $part_name $vivado_version_year]
 if {[dict get $result status] eq "error"} {
-    puts "handle_synth_settings::configure_synth_settings error"
-} else {
-    puts "handle_synth_settings::configure_synth_settings success"
+    set workflow_has_errors 1
+} elseif {[dict get $result status] eq "warning"} {
+    set workflow_has_warnings 1
 }
 
 # Apply custom synthesis options
 set result [handle_synth_settings::apply_custom_synth_options]
 if {[dict get $result status] eq "error"} {
-    puts "handle_synth_settings::apply_custom_synth_options error"
-} else {
-    puts "handle_synth_settings::apply_custom_synth_options success"
+    set workflow_has_errors 1
+} elseif {[dict get $result status] eq "warning"} {
+    set workflow_has_warnings 1
 }
 
 # Apply top-level generics
 set result [handle_synth_settings::apply_top_level_generics]
 if {[dict get $result status] eq "error"} {
-    puts "handle_synth_settings::apply_top_level_generics error"
-} else {
-    puts "handle_synth_settings::apply_top_level_generics success"
+    set workflow_has_errors 1
+} elseif {[dict get $result status] eq "warning"} {
+    set workflow_has_warnings 1
 }
 
 # Configure implementation settings
 set result [handle_impl_settings::configure_impl_settings $part_name $vivado_version_year]
 if {[dict get $result status] eq "error"} {
-    puts "handle_impl_settings::configure_impl_settings error"
-} else {
-    puts "handle_impl_settings::configure_impl_settings success"
+    set workflow_has_errors 1
+} elseif {[dict get $result status] eq "warning"} {
+    set workflow_has_warnings 1
 }
 
 # Apply custom implementation options
 set result [handle_impl_settings::apply_custom_impl_options]
 if {[dict get $result status] eq "error"} {
-    puts "handle_impl_settings::apply_custom_impl_options error"
-} else {
-    puts "handle_impl_settings::apply_custom_impl_options success"
+    set workflow_has_errors 1
+} elseif {[dict get $result status] eq "warning"} {
+    set workflow_has_warnings 1
 }
 
 # ===============================================================================

@@ -1,5 +1,7 @@
-# handle_xcis.tcl
+# handle_xcis.tcl - XCI file handling with improved logging
 namespace eval handle_xcis {
+    # Module name for logging
+    variable MODULE_NAME "handle_xcis"
 
     proc extract_coefficient_path {content xci_dir} {
         # JSON format: "Coefficient_File" : [ { "value" : "path/to/file.coe" } ]
@@ -59,6 +61,11 @@ namespace eval handle_xcis {
     }
 
     proc process_xcis {files_list project_dir script_mode local_xci_dir} {
+        variable MODULE_NAME
+        
+        # Initialise logging for this module
+        common::log_init $MODULE_NAME
+        
         common::log_status "Handling XCIs (Build Mode = [expr {$script_mode == $common::BUILD_MODE ? "YES" : "NO"}])..."
 
         catch {set_msg_config -id {Vivado 12-4371} -suppress}
@@ -66,6 +73,8 @@ namespace eval handle_xcis {
         catch {set_msg_config -id {Vivado 12-3645} -suppress}
 
         array set xci_to_coef {}
+        set xci_count 0
+        set coef_count 0
 
         # ================================================================
         # PASS 1: Discover all coefficient dependencies
@@ -75,7 +84,7 @@ namespace eval handle_xcis {
 
             set xci_path [dict get $file_entry path]
             if {![file exists $xci_path]} {
-                common::log_warning "handle_xcis" "XCI not found: $xci_path"
+                common::log_warning $MODULE_NAME "XCI not found: $xci_path"
                 continue
             }
 
@@ -110,6 +119,7 @@ namespace eval handle_xcis {
                     file copy -force $orig_coef $target_coef
                     add_files -fileset sources_1 $target_coef
                     set copied_coef($coef_name) 1
+                    incr coef_count
                     common::log_info "Copied shared coef → $target_coef"
                 }
             }
@@ -118,7 +128,10 @@ namespace eval handle_xcis {
             foreach file_entry $files_list {
                 if {[dict get $file_entry type] ne "X_XCI"} continue
                 set xci_path [dict get $file_entry path]
-                if {![file exists $xci_path]} continue
+                if {![file exists $xci_path]} {
+                    common::log_warning $MODULE_NAME "XCI file not found during copy: $xci_path"
+                    continue
+                }
 
                 set xci_abs  [file normalize $xci_path]
                 set xci_name [file rootname [file tail $xci_path]]
@@ -135,6 +148,7 @@ namespace eval handle_xcis {
                 }
 
                 add_files -fileset sources_1 $local_xci
+                incr xci_count
                 common::log_info "Added restructured XCI → $local_xci"
             }
 
@@ -146,21 +160,29 @@ namespace eval handle_xcis {
                 if {[dict get $file_entry type] ne "X_XCI"} continue
 
                 set xci_path [dict get $file_entry path]
-                if {![file exists $xci_path]} continue
+                if {![file exists $xci_path]} {
+                    common::log_warning $MODULE_NAME "XCI file not found: $xci_path"
+                    continue
+                }
 
                 set xci_abs [file normalize $xci_path]
                 add_files -fileset sources_1 $xci_path
+                incr xci_count
                 common::log_info "Added original XCI: $xci_path"
 
                 if {[info exists xci_to_coef($xci_abs)]} {
                     set coef_path $xci_to_coef($xci_abs)
                     add_files -fileset sources_1 $coef_path
+                    incr coef_count
                     common::log_info "Added original coef: $coef_path"
                 }
             }
         }
 
-        common::log_status "XCI handling complete."
-        return [common::return_success {}]
+        common::log_status "XCI handling complete. Processed $xci_count XCI(s), $coef_count coefficient file(s)."
+        
+        # Return result using automatic tracking
+        return [common::report_step_result "handle_xcis::process_xcis" $MODULE_NAME \
+            [dict create xci_count $xci_count coef_count $coef_count]]
     }
 }

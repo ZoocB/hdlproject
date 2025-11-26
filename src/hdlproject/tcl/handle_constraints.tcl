@@ -1,10 +1,19 @@
-# handle_constraints.tcl - Constraint and TCL file handling
+# handle_constraints.tcl - Constraint and TCL file handling with improved logging
 namespace eval handle_constraints {
+    # Module name for logging
+    variable MODULE_NAME "handle_constraints"
+    
     # Process constraint files from configuration only
     proc process_constraints {files_list} {
+        variable MODULE_NAME
+        
+        # Initialise logging for this module
+        common::log_init $MODULE_NAME
+        
         common::log_status "Handling Constraints and TCL files..."
 
-        set constraint_issues false
+        set constraints_added 0
+        set tcl_executed 0
         
         # Create filesets if needed
         if {[string equal [get_filesets -quiet constrs_1] ""]} {
@@ -21,7 +30,7 @@ namespace eval handle_constraints {
         # Check if constraints section exists
         if {![dict exists $config_dict constraints]} {
             common::log_info "No constraints section found in configuration"
-            return [common::return_success {}]
+            return [common::report_step_result "handle_constraints::process_constraints" $MODULE_NAME]
         }
         
         set config_constraints [dict get $config_dict constraints]
@@ -55,8 +64,7 @@ namespace eval handle_constraints {
             
             # Get file name from constraint entry
             if {![dict exists $constraint file]} {
-                common::log_warning "handle_constraints" "Constraint entry missing 'file' key"
-                set constraint_issues true
+                common::log_warning $MODULE_NAME "Constraint entry missing 'file' key"
                 continue
             }
             
@@ -64,8 +72,7 @@ namespace eval handle_constraints {
             
             # Find the full path from compile order
             if {![dict exists $file_lookup $file_name]} {
-                common::log_warning "handle_constraints" "File '$file_name' specified in config but not found in compile order"
-                set constraint_issues true
+                common::log_warning $MODULE_NAME "File '$file_name' specified in config but not found in compile order"
                 continue
             }
             
@@ -73,8 +80,7 @@ namespace eval handle_constraints {
 
             # Check if file exists
             if {![file exists $full_path]} {
-                common::log_warning "handle_constraints" "File not found: $full_path"
-                set constraint_issues true
+                common::log_warning $MODULE_NAME "File not found: $full_path"
                 continue
             }
             
@@ -111,11 +117,11 @@ namespace eval handle_constraints {
             if {$is_tcl && $immediate_execution} {
                 common::log_info "Executing TCL script immediately: $file_name"
                 if {[catch {source $full_path} error_msg]} {
-                    common::log_error "handle_constraints" "Error executing TCL script '$file_name': $error_msg"
-                    set constraint_issues true
+                    common::log_error $MODULE_NAME "Error executing TCL script '$file_name': $error_msg"
                     continue
                 }
                 common::log_info "Successfully executed TCL script: $file_name"
+                incr tcl_executed
                 # Don't add to project if executed immediately
                 continue
             }
@@ -128,22 +134,24 @@ namespace eval handle_constraints {
                 
                 # Set as target constraints file if needed
                 set_property target_constrs_file $full_path [current_fileset -constrset]
+                incr constraints_added
             } elseif {$is_tcl} {
                 # TCL files can go to different filesets
                 common::log_info "Adding TCL file '$file_name' to $target_fileset"
                 
                 if {$target_fileset eq "constrs_1"} {
                     add_files -fileset constrs_1 $full_path
+                    incr constraints_added
                 } elseif {$target_fileset eq "utils_1"} {
                     add_files -fileset utils_1 $full_path
+                    incr constraints_added
                 } else {
-                    common::log_warning "handle_constraints" "Unknown fileset '$target_fileset' for TCL file '$file_name', using utils_1"
-                    set constraint_issues true
+                    common::log_warning $MODULE_NAME "Unknown fileset '$target_fileset' for TCL file '$file_name', using utils_1"
                     add_files -fileset utils_1 $full_path
+                    incr constraints_added
                 }
             } else {
-                common::log_warning "handle_constraints" "Unknown file type for: $file_name"
-                set constraint_issues true
+                common::log_warning $MODULE_NAME "Unknown file type for: $file_name"
                 continue
             }
             
@@ -166,18 +174,17 @@ namespace eval handle_constraints {
                             set_property $prop_name $prop_value $file_obj
                             common::log_info "  Set property $prop_name = $prop_value"
                         } error_msg]} {
-                            common::log_warning "handle_constraints" "Failed to set property $prop_name on file '$file_name': $error_msg"
-                            set constraint_issues true
+                            common::log_warning $MODULE_NAME "Failed to set property $prop_name on file '$file_name': $error_msg"
                         }
                     }
                 }
             }
         }
 
-        if {$constraint_issues} {
-          return [return_error "handle_constraints.tcl" "Issues found"]
-        } else {
-          return [common::return_success {}]
-        }
+        common::log_status "Constraint handling complete. Added $constraints_added constraint(s), executed $tcl_executed TCL script(s)."
+        
+        # Return result using automatic tracking
+        return [common::report_step_result "handle_constraints::process_constraints" $MODULE_NAME \
+            [dict create constraints_added $constraints_added tcl_executed $tcl_executed]]
     }
 }
