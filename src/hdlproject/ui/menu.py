@@ -152,39 +152,7 @@ class ProjectManagementMenu:
             error_occurred = True
             error_message = f"Unexpected error: {e}"
         finally:
-            self._display_operation_results(
-                handler_name=handler_name,
-                error_occurred=error_occurred,
-                error_message=error_message,
-            )
             input("\nPress Enter to continue...")
-
-    def _display_operation_results(
-        self, handler_name: str, error_occurred: bool, error_message: str = None
-    ) -> None:
-        """Display operation results - logs only."""
-        # print()
-        # print("=" * 80)
-        # print("OPERATION COMPLETE")
-        # print("=" * 80)
-        # Error message if present
-        if error_occurred and error_message:
-            print()
-            print(f"{self.RED}ERROR:{self.RESET} {error_message}")
-        # Application log (always)
-        print()
-        print(f"{self.BOLD}Application Log:{self.RESET}")
-        print(f"  {self.app.app_log_path}")
-        # Project logs
-        for project_name in self._selected_projects:
-            print()
-            print(f"{self.BOLD}Project: {project_name}{self.RESET}")
-            project_log = self._get_project_log_path(project_name, handler_name)
-            if project_log.exists():
-                print(f"  Log: {project_log}")
-            else:
-                print(f"  Log: {self.DIM}{project_log} (not created){self.RESET}")
-        print("=" * 80)
 
     def _get_project_log_path(self, project_name: str, handler_name: str) -> Path:
         """Get the expected path for a project log file"""

@@ -6,6 +6,7 @@ import threading
 from enum import Enum
 from typing import Optional
 from dataclasses import dataclass, field
+from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
 
@@ -412,7 +413,15 @@ class LiveStatusDisplay:
                 pass
 
     def _print_final_summary(self) -> None:
-        """Print minimal final summary after live display stops"""
+        """Print final summary after live display stops using Rich styling"""
+        from rich.console import Console
+        from rich.panel import Panel
+        from rich.table import Table
+        from rich.text import Text
+        from rich import box
+
+        console = Console()
+
         with self._lock:
             success_count = 0
             warning_count = 0
@@ -426,65 +435,119 @@ class LiveStatusDisplay:
                 elif project.overall_state == StepState.FAILED:
                     failed_count += 1
 
-            # Single line summary
-            print()  # Empty line for spacing
+            total = success_count + warning_count + failed_count
+
+            # Determine overall status and color
             if failed_count > 0:
-                print(
-                    f"{self.title}: {failed_count} failed, {warning_count} warnings, {success_count} succeeded"
-                )
+                status_text = "FAILED"
+                status_style = "bold red"
+                border_style = "red"
             elif warning_count > 0:
-                print(
-                    f"{self.title}: {warning_count} with warnings, {success_count} succeeded"
-                )
-            elif success_count > 0:
-                print(f"{self.title}: All {success_count} succeeded")
+                status_text = "COMPLETED WITH WARNINGS"
+                status_style = "bold yellow"
+                border_style = "yellow"
             else:
-                print(f"{self.title}: No projects processed")
+                status_text = "SUCCESS"
+                status_style = "bold green"
+                border_style = "green"
 
-            # Show message summary if there were issues
+            # Build summary content
+            content = Text()
+
+            # Status line
+            content.append("Status: ", style="dim")
+            content.append(f"{status_text}\n", style=status_style)
+
+            # Counts line
+            content.append("Result: ", style="dim")
+            if failed_count > 0:
+                content.append(f"{failed_count} failed", style="red")
+                if warning_count > 0 or success_count > 0:
+                    content.append(" · ")
+            if warning_count > 0:
+                content.append(f"{warning_count} warnings", style="yellow")
+                if success_count > 0:
+                    content.append(" · ")
+            if success_count > 0:
+                content.append(f"{success_count} succeeded", style="green")
+            content.append(f"  ({total} total)\n", style="dim")
+
+            # Add project details if there were issues
             if failed_count > 0 or warning_count > 0:
-                self._print_message_summary()
+                content.append("\n")
+                self._append_project_details(content)
 
-    def _print_message_summary(self) -> None:
-        """Print summary of warnings/errors per project"""
-        with self._lock:
-            print("\nProject Summary:")
-            print("─" * 60)
+            # Add application log
+            content.append("\n")
+            content.append("Application Log: ", style="dim")
+            app_log = Path.cwd() / "bin" / "hdlproject.log"
+            content.append(f"{app_log}", style="cyan")
 
-            for project_name, project in sorted(self.projects.items()):
-                if (
-                    project.total_warnings > 0
-                    or project.total_errors > 0
-                    or project.overall_state == StepState.FAILED
-                ):
-                    status_icon = {
-                        StepState.COMPLETED: "✓",
-                        StepState.WARNING: "⚠",
-                        StepState.FAILED: "✗",
-                    }.get(project.overall_state, "?")
+            # Create and print panel
+            print()  # Spacing before panel
+            console.print(
+                Panel(
+                    content,
+                    title=f"[bold]{self.title.replace(' Operations', '')} Summary[/bold]",
+                    border_style=border_style,
+                    box=box.ROUNDED,
+                    padding=(0, 1),
+                )
+            )
 
-                    counts = []
-                    if project.total_warnings > 0:
-                        counts.append(f"{project.total_warnings} warning(s)")
-                    if project.total_errors > 0:
-                        counts.append(f"{project.total_errors} error(s)")
+    def _append_project_details(self, content: "Text") -> None:
+        """Append project details to Rich Text content"""
+        from rich.text import Text
 
-                    count_str = ", ".join(counts) if counts else "failed"
-                    print(f"  {status_icon} {project_name}: {count_str}")
+        for project_name, project in sorted(self.projects.items()):
+            if (
+                project.total_warnings > 0
+                or project.total_errors > 0
+                or project.overall_state == StepState.FAILED
+            ):
+                # Project status icon and name
+                if project.overall_state == StepState.FAILED:
+                    content.append("✗ ", style="red")
+                    content.append(f"{project_name}", style="bold red")
+                elif project.overall_state == StepState.WARNING:
+                    content.append("⚠ ", style="yellow")
+                    content.append(f"{project_name}", style="bold yellow")
+                else:
+                    content.append("✓ ", style="green")
+                    content.append(f"{project_name}", style="bold green")
 
-                    # Show steps with issues
-                    for step in project.steps:
-                        if step.state in [StepState.WARNING, StepState.FAILED]:
-                            step_icon = "⚠" if step.state == StepState.WARNING else "✗"
-                            step_counts = step.get_count_str()
-                            if step_counts:
-                                print(f"      {step_icon} {step.name} [{step_counts}]")
-                            else:
-                                print(f"      {step_icon} {step.name}")
+                # Counts
+                counts = []
+                if project.total_warnings > 0:
+                    counts.append(f"{project.total_warnings} warning(s)")
+                if project.total_errors > 0:
+                    counts.append(f"{project.total_errors} error(s)")
+                if counts:
+                    content.append(f"  {', '.join(counts)}", style="dim")
+                content.append("\n")
 
-                    # Show log file
-                    if project.log_file_path:
-                        print(f"      Log: {project.log_file_path}")
+                # Show steps with issues (indented)
+                for step in project.steps:
+                    if step.state in [StepState.WARNING, StepState.FAILED]:
+                        content.append("    ")
+                        if step.state == StepState.WARNING:
+                            content.append("⚠ ", style="yellow")
+                            content.append(f"{step.name}", style="yellow")
+                        else:
+                            content.append("✗ ", style="red")
+                            content.append(f"{step.name}", style="red")
+
+                        step_counts = step.get_count_str()
+                        if step_counts:
+                            content.append(f" [{step_counts}]", style="dim")
+                        content.append("\n")
+
+                # Show log file (indented)
+                if project.log_file_path:
+                    content.append("    ")
+                    content.append("Log: ", style="dim")
+                    content.append(f"{project.log_file_path}", style="cyan")
+                    content.append("\n")
 
     def _update_loop(self) -> None:
         """Update loop for Rich display"""
