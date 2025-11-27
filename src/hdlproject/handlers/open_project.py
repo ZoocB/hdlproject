@@ -26,91 +26,40 @@ class OpenProjectHandler(BaseHandler):
         name="open",
         tcl_mode="open",
         step_patterns=[
-            # Configuration loading
-            StepPattern("Loading Configuration", [r"Loading configuration from"]),
-            StepPattern("Setting up Project", [r"Setting up Project"]),
-            # HDLProject step result patterns
-            StepPattern(
-                "Processing IP Cores",
-                [
-                    r"\[HDLPROJECT_STEP_SUCCESS\] handle_xcis::process_xcis",
-                    r"\[HDLPROJECT_STEP_WARNING\] handle_xcis::process_xcis",
-                    r"\[HDLPROJECT_STEP_ERROR\] handle_xcis::process_xcis",
-                ],
+            # Start patterns for initial setup
+            StepPattern.start("Loading Configuration", r"Loading configuration from"),
+            StepPattern.start("Setting up Project", r"Setting up Project"),
+            # TCL step patterns - auto-expand to SUCCESS/WARNING/ERROR
+            StepPattern.tcl("Processing IP Cores", "handle_xcis::process_xcis"),
+            StepPattern.tcl(
+                "Loading HDL Sources", "handle_source_files::process_source_files"
             ),
-            StepPattern(
-                "Loading HDL Sources",
-                [
-                    r"\[HDLPROJECT_STEP_SUCCESS\] handle_source_files::process_source_files",
-                    r"\[HDLPROJECT_STEP_WARNING\] handle_source_files::process_source_files",
-                    r"\[HDLPROJECT_STEP_ERROR\] handle_source_files::process_source_files",
-                ],
+            StepPattern.tcl("Processing Block Designs", "handle_bds::process_bds"),
+            StepPattern.tcl(
+                "Loading Constraints", "handle_constraints::process_constraints"
             ),
-            StepPattern(
-                "Processing Block Designs",
-                [
-                    r"\[HDLPROJECT_STEP_SUCCESS\] handle_bds::process_bds",
-                    r"\[HDLPROJECT_STEP_WARNING\] handle_bds::process_bds",
-                    r"\[HDLPROJECT_STEP_ERROR\] handle_bds::process_bds",
-                ],
-            ),
-            StepPattern(
-                "Loading Constraints",
-                [
-                    r"\[HDLPROJECT_STEP_SUCCESS\] handle_constraints::process_constraints",
-                    r"\[HDLPROJECT_STEP_WARNING\] handle_constraints::process_constraints",
-                    r"\[HDLPROJECT_STEP_ERROR\] handle_constraints::process_constraints",
-                ],
-            ),
-            StepPattern(
-                "Setting Top Level",
-                [
-                    r"\[HDLPROJECT_STEP_SUCCESS\] handle_source_files::set_top_level",
-                    r"\[HDLPROJECT_STEP_WARNING\] handle_source_files::set_top_level",
-                    r"\[HDLPROJECT_STEP_ERROR\] handle_source_files::set_top_level",
-                ],
-            ),
-            StepPattern(
+            StepPattern.tcl("Setting Top Level", "handle_source_files::set_top_level"),
+            StepPattern.tcl(
                 "Configuring Synthesis",
-                [
-                    r"\[HDLPROJECT_STEP_SUCCESS\] handle_synth_settings::configure_synth_settings",
-                    r"\[HDLPROJECT_STEP_WARNING\] handle_synth_settings::configure_synth_settings",
-                    r"\[HDLPROJECT_STEP_ERROR\] handle_synth_settings::configure_synth_settings",
-                ],
+                "handle_synth_settings::configure_synth_settings",
             ),
-            StepPattern(
+            StepPattern.tcl(
                 "Applying Synthesis Options",
-                [
-                    r"\[HDLPROJECT_STEP_SUCCESS\] handle_synth_settings::apply_custom_synth_options",
-                    r"\[HDLPROJECT_STEP_WARNING\] handle_synth_settings::apply_custom_synth_options",
-                    r"\[HDLPROJECT_STEP_ERROR\] handle_synth_settings::apply_custom_synth_options",
-                ],
+                "handle_synth_settings::apply_custom_synth_options",
             ),
-            StepPattern(
-                "Applying Generics",
-                [
-                    r"\[HDLPROJECT_STEP_SUCCESS\] handle_synth_settings::apply_top_level_generics",
-                    r"\[HDLPROJECT_STEP_WARNING\] handle_synth_settings::apply_top_level_generics",
-                    r"\[HDLPROJECT_STEP_ERROR\] handle_synth_settings::apply_top_level_generics",
-                ],
+            StepPattern.tcl(
+                "Applying Generics", "handle_synth_settings::apply_top_level_generics"
             ),
-            StepPattern(
+            StepPattern.tcl(
                 "Configuring Implementation",
-                [
-                    r"\[HDLPROJECT_STEP_SUCCESS\] handle_impl_settings::configure_impl_settings",
-                    r"\[HDLPROJECT_STEP_WARNING\] handle_impl_settings::configure_impl_settings",
-                    r"\[HDLPROJECT_STEP_ERROR\] handle_impl_settings::configure_impl_settings",
-                ],
+                "handle_impl_settings::configure_impl_settings",
             ),
-            StepPattern(
+            StepPattern.tcl(
                 "Applying Implementation Options",
-                [
-                    r"\[HDLPROJECT_STEP_SUCCESS\] handle_impl_settings::apply_custom_impl_options",
-                    r"\[HDLPROJECT_STEP_WARNING\] handle_impl_settings::apply_custom_impl_options",
-                    r"\[HDLPROJECT_STEP_ERROR\] handle_impl_settings::apply_custom_impl_options",
-                ],
+                "handle_impl_settings::apply_custom_impl_options",
             ),
-            StepPattern("Opening GUI", [r"Opening Vivado GUI"]),
+            # Opening GUI - start pattern (GUI opens after this, process doesn't return)
+            StepPattern.start("Opening GUI", r"Opening Vivado GUI"),
         ],
         operation_steps=[
             "Loading Configuration",

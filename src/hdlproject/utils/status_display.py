@@ -1,5 +1,5 @@
 # utils/status_display.py
-"""Status display with tree visualisation and warning state support"""
+"""Status display with tree visualisation"""
 
 import time
 import threading
@@ -59,6 +59,7 @@ class Step:
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     warning_count: int = 0
+    critical_warning_count: int = 0
     error_count: int = 0
 
     def get_duration_str(self) -> str:
@@ -77,13 +78,33 @@ class Step:
             return f"{minutes:02d}:{seconds:02d}"
 
     def get_count_str(self) -> str:
-        """Get warning/error count string"""
+        """Get warning/critical warning/error count string"""
         parts = []
         if self.warning_count > 0:
             parts.append(f"W:{self.warning_count}")
+        if self.critical_warning_count > 0:
+            parts.append(f"CW:{self.critical_warning_count}")
         if self.error_count > 0:
             parts.append(f"E:{self.error_count}")
         return " ".join(parts) if parts else ""
+
+    def has_issues(self) -> bool:
+        """Check if step has any warnings, critical warnings, or errors"""
+        return (
+            self.warning_count > 0
+            or self.critical_warning_count > 0
+            or self.error_count > 0
+        )
+
+
+@dataclass
+class ExtraInfoItem:
+    """Generic extra information item for display"""
+
+    label: str  # e.g., "Timing"
+    value: str  # e.g., "PASSED"
+    style: str = "dim"  # Rich style: "green", "red", "yellow", "dim", etc.
+    path: Optional[str] = None  # Optional path to display (e.g., report file)
 
 
 @dataclass
@@ -114,9 +135,17 @@ class ProjectStatus:
         default_factory=lambda: defaultdict(int)
     )
 
-    # Overall counts
+    # Overall counts - now with separate critical warning count
     total_warnings: int = 0
+    total_critical_warnings: int = 0
     total_errors: int = 0
+
+    # Project context info
+    project_context_name: Optional[str] = None
+    build_artefacts_path: Optional[str] = None
+
+    # Generic extra info (for timing results, etc.)
+    extra_info: dict[str, ExtraInfoItem] = field(default_factory=dict)
 
     def get_elapsed_time(self) -> str:
         """Get total elapsed time"""
@@ -147,14 +176,24 @@ class ProjectStatus:
             return relevant_messages[-1] if relevant_messages else None
 
     def get_message_summary(self) -> str:
-        """Get message count summary"""
+        """Get message count summary with separate W/CW/E"""
         with self._lock:
             parts = []
             if self.total_warnings > 0:
                 parts.append(f"W:{self.total_warnings}")
+            if self.total_critical_warnings > 0:
+                parts.append(f"CW:{self.total_critical_warnings}")
             if self.total_errors > 0:
                 parts.append(f"E:{self.total_errors}")
             return " ".join(parts) if parts else ""
+
+    def has_issues(self) -> bool:
+        """Check if project has any warnings, critical warnings, or errors"""
+        return (
+            self.total_warnings > 0
+            or self.total_critical_warnings > 0
+            or self.total_errors > 0
+        )
 
     def start_step(self, step_name: str) -> None:
         """Start a specific step - thread-safe"""
@@ -185,6 +224,7 @@ class ProjectStatus:
         step_name: str,
         state: StepState,
         warning_count: int = 0,
+        critical_warning_count: int = 0,
         error_count: int = 0,
     ) -> None:
         """Complete a step with specific result state and counts"""
@@ -205,8 +245,25 @@ class ProjectStatus:
                     step.state = state
                     step.end_time = datetime.now()
                     step.warning_count = warning_count
+                    step.critical_warning_count = critical_warning_count
                     step.error_count = error_count
+
+                    # Accumulate to project totals
                     self.total_warnings += warning_count
+                    self.total_critical_warnings += critical_warning_count
+                    self.total_errors += error_count
+
+                    self.current_step_index = i
+                    break
+
+    def mark_step_failed(self, step_name: str, error_count: int = 1) -> None:
+        """Mark a specific step as failed without calling fail() on the project"""
+        with self._lock:
+            for i, step in enumerate(self.steps):
+                if step.name == step_name:
+                    step.state = StepState.FAILED
+                    step.end_time = datetime.now()
+                    step.error_count += error_count
                     self.total_errors += error_count
                     self.current_step_index = i
                     break
@@ -217,24 +274,63 @@ class ProjectStatus:
             self.overall_state = StepState.FAILED
             self.message = message
 
-            # Mark current step as failed
-            if self.current_step_index >= 0:
-                step = self.steps[self.current_step_index]
-                step.state = StepState.FAILED
-                step.end_time = datetime.now()
+            # Check if there are any steps that are still PENDING or RUNNING
+            has_incomplete_steps = any(
+                step.state in [StepState.PENDING, StepState.RUNNING]
+                for step in self.steps
+            )
 
-            # Skip remaining steps
-            for i in range(self.current_step_index + 1, len(self.steps)):
+            if not has_incomplete_steps:
+                # All steps already completed - don't mark any as failed
+                # This happens when process had errors but all steps still ran
+                return
+
+            # Find the step to mark as failed:
+            # - If current step is RUNNING, mark it as failed
+            # - If current step is COMPLETED, mark the next pending step as failed
+            failed_step_index = self.current_step_index
+
+            if self.current_step_index >= 0:
+                current_step = self.steps[self.current_step_index]
+                if (
+                    current_step.state == StepState.COMPLETED
+                    or current_step.state == StepState.WARNING
+                ):
+                    # Current step completed successfully, so failure is in next step
+                    # Find next pending step
+                    for i in range(self.current_step_index + 1, len(self.steps)):
+                        if self.steps[i].state == StepState.PENDING:
+                            failed_step_index = i
+                            break
+                    else:
+                        # No pending steps found - all completed, nothing to mark as failed
+                        return
+
+            # Mark the failed step
+            if failed_step_index >= 0 and failed_step_index < len(self.steps):
+                step = self.steps[failed_step_index]
+                if step.state in [StepState.PENDING, StepState.RUNNING]:
+                    step.state = StepState.FAILED
+                    step.end_time = datetime.now()
+                    if step.start_time is None:
+                        step.start_time = datetime.now()
+
+            # Skip remaining steps after the failed one
+            for i in range(failed_step_index + 1, len(self.steps)):
                 if self.steps[i].state == StepState.PENDING:
                     self.steps[i].state = StepState.SKIPPED
 
     def complete(self, with_warnings: bool = False) -> None:
-        """Mark project as completed - thread-safe"""
+        """Mark project as completed - thread-safe
+
+        Note: Warnings don't change the overall state to WARNING anymore.
+        Projects with only warnings are considered COMPLETED (success).
+        Only errors cause FAILED state.
+        """
         with self._lock:
-            if with_warnings or self.total_warnings > 0:
-                self.overall_state = StepState.WARNING
-            else:
-                self.overall_state = StepState.COMPLETED
+            # Warnings are normal in Vivado - project is still successful
+            # Only errors would have caused a failure earlier
+            self.overall_state = StepState.COMPLETED
 
             # Complete current step if running
             if self.current_step_index >= 0:
@@ -302,6 +398,44 @@ class LiveStatusDisplay:
             if project_name in self.projects:
                 self.projects[project_name].log_file_path = log_file_path
 
+    def set_project_context_name(self, project_name: str, context_name: str) -> None:
+        """Set the project context name (build name) for a project"""
+        with self._lock:
+            if project_name in self.projects:
+                self.projects[project_name].project_context_name = context_name
+
+    def set_build_artefacts_path(self, project_name: str, artefacts_path: str) -> None:
+        """Set the build artefacts path for a project"""
+        with self._lock:
+            if project_name in self.projects:
+                self.projects[project_name].build_artefacts_path = artefacts_path
+
+    def set_extra_info(
+        self,
+        project_name: str,
+        key: str,
+        label: str,
+        value: str,
+        style: str = "dim",
+        path: Optional[str] = None,
+    ) -> None:
+        """
+        Set generic extra information for a project.
+
+        Args:
+            project_name: Name of the project
+            key: Unique key for this info item (e.g., "timing")
+            label: Display label (e.g., "Timing")
+            value: Display value (e.g., "PASSED")
+            style: Rich style for the value (e.g., "green", "red")
+            path: Optional file path to display
+        """
+        with self._lock:
+            if project_name in self.projects:
+                self.projects[project_name].extra_info[key] = ExtraInfoItem(
+                    label=label, value=value, style=style, path=path
+                )
+
     def update_project_step(
         self,
         project_name: str,
@@ -309,10 +443,23 @@ class LiveStatusDisplay:
         failed: bool = False,
         message: Optional[str] = None,
         warning_count: int = 0,
+        critical_warning_count: int = 0,
         error_count: int = 0,
         step_result: Optional[str] = None,
     ) -> None:
-        """Update project to a specific step with optional result state"""
+        """
+        Update project to a specific step with optional result state.
+
+        Args:
+            project_name: Name of the project
+            step_name: Name of the step
+            failed: Whether step failed (marks step as failed, NOT the project)
+            message: Optional message
+            warning_count: Number of warnings
+            critical_warning_count: Number of critical warnings
+            error_count: Number of errors
+            step_result: Result type ('success', 'warning', 'error')
+        """
         with self._lock:
             if project_name not in self.projects:
                 return
@@ -325,36 +472,50 @@ class LiveStatusDisplay:
                 project.overall_state = StepState.RUNNING
 
             if failed:
-                project.fail(message)
+                # Mark the step as failed, but don't call project.fail()
+                # This allows the workflow to continue
+                project.mark_step_failed(step_name, error_count)
             elif step_result == "warning":
                 # Complete step with warning state
                 project.complete_step_with_result(
-                    step_name, StepState.WARNING, warning_count, error_count
+                    step_name,
+                    StepState.WARNING,
+                    warning_count,
+                    critical_warning_count,
+                    error_count,
                 )
             elif step_result == "error":
-                # Complete step with error state
-                project.complete_step_with_result(
-                    step_name, StepState.FAILED, warning_count, error_count
-                )
+                # Complete step with error state (but don't fail project)
+                project.mark_step_failed(step_name, error_count)
             elif step_result == "success":
                 # Complete step with success state
-                project.complete_step_with_result(step_name, StepState.COMPLETED, 0, 0)
+                project.complete_step_with_result(
+                    step_name,
+                    StepState.COMPLETED,
+                    warning_count,
+                    critical_warning_count,
+                    0,
+                )
             else:
+                # Just start the step (no result yet)
                 project.start_step(step_name)
 
     def complete_project(
         self, project_name: str, success: bool = True, message: Optional[str] = None
     ) -> None:
-        """Mark a project as completed"""
+        """Mark a project as completed
+
+        Note: Warnings don't affect success status. Only actual failures
+        (TCL step errors, non-zero exit codes) cause failure.
+        """
         with self._lock:
             if project_name not in self.projects:
                 return
 
             project = self.projects[project_name]
             if success:
-                # Check if there were any warnings
-                has_warnings = project.total_warnings > 0
-                project.complete(with_warnings=has_warnings)
+                # Warnings are normal - project is still successful
+                project.complete(with_warnings=False)
             else:
                 project.fail(message)
 
@@ -413,10 +574,8 @@ class LiveStatusDisplay:
                 pass
 
     def _print_final_summary(self) -> None:
-        """Print final summary after live display stops using Rich styling"""
         from rich.console import Console
         from rich.panel import Panel
-        from rich.table import Table
         from rich.text import Text
         from rich import box
 
@@ -424,130 +583,148 @@ class LiveStatusDisplay:
 
         with self._lock:
             success_count = 0
-            warning_count = 0
             failed_count = 0
 
             for project_name, project in sorted(self.projects.items()):
-                if project.overall_state == StepState.COMPLETED:
-                    success_count += 1
-                elif project.overall_state == StepState.WARNING:
-                    warning_count += 1
-                elif project.overall_state == StepState.FAILED:
+                if project.overall_state == StepState.FAILED:
                     failed_count += 1
+                else:
+                    success_count += 1
 
-            total = success_count + warning_count + failed_count
+            total = success_count + failed_count
 
-            # Determine overall status and color
             if failed_count > 0:
                 status_text = "FAILED"
                 status_style = "bold red"
                 border_style = "red"
-            elif warning_count > 0:
-                status_text = "COMPLETED WITH WARNINGS"
-                status_style = "bold yellow"
-                border_style = "yellow"
             else:
                 status_text = "SUCCESS"
                 status_style = "bold green"
                 border_style = "green"
 
-            # Build summary content
             content = Text()
+            content.append(f"{status_text}", style=status_style)
+            content.append(" · ", style="dim")
 
-            # Status line
-            content.append("Status: ", style="dim")
-            content.append(f"{status_text}\n", style=status_style)
-
-            # Counts line
-            content.append("Result: ", style="dim")
+            parts = []
             if failed_count > 0:
-                content.append(f"{failed_count} failed", style="red")
-                if warning_count > 0 or success_count > 0:
-                    content.append(" · ")
-            if warning_count > 0:
-                content.append(f"{warning_count} warnings", style="yellow")
-                if success_count > 0:
-                    content.append(" · ")
+                parts.append(f"{failed_count} failed")
             if success_count > 0:
-                content.append(f"{success_count} succeeded", style="green")
-            content.append(f"  ({total} total)\n", style="dim")
-
-            # Add project details if there were issues
-            if failed_count > 0 or warning_count > 0:
-                content.append("\n")
-                self._append_project_details(content)
-
-            # Add application log
+                parts.append(f"{success_count} succeeded")
+            content.append(" · ".join(parts), style="dim")
             content.append("\n")
-            content.append("Application Log: ", style="dim")
-            app_log = Path.cwd() / "bin" / "hdlproject.log"
-            content.append(f"{app_log}", style="cyan")
 
-            # Create and print panel
-            print()  # Spacing before panel
+            self._append_project_details(content, show_all=(failed_count == 0))
+
+            content.append("\n")
+            app_log = Path.cwd() / "bin" / "hdlproject.log"
+            content.append("App Log ", style="dim")
+            content.append(f"{app_log}", style="cyan dim")
+
+            # Calculate width - use terminal width but enforce minimum
+            panel_width = max(console.width, 60) if console.width else None
+
+            print()
             console.print(
                 Panel(
                     content,
-                    title=f"[bold]{self.title.replace(' Operations', '')} Summary[/bold]",
+                    title=f"[bold]{self.title.replace(' Operations', '')}[/bold]",
                     border_style=border_style,
                     box=box.ROUNDED,
                     padding=(0, 1),
+                    width=panel_width,
                 )
             )
 
-    def _append_project_details(self, content: "Text") -> None:
-        """Append project details to Rich Text content"""
+    def _append_project_details(self, content: "Text", show_all: bool = False) -> None:
+        """Append project details to Rich Text content
+
+        Projects with warnings show as green success with warning counts.
+        Only failed projects show as red.
+        Steps with warnings still show yellow.
+        """
         from rich.text import Text
 
         for project_name, project in sorted(self.projects.items()):
-            if (
-                project.total_warnings > 0
-                or project.total_errors > 0
-                or project.overall_state == StepState.FAILED
-            ):
-                # Project status icon and name
-                if project.overall_state == StepState.FAILED:
-                    content.append("✗ ", style="red")
-                    content.append(f"{project_name}", style="bold red")
-                elif project.overall_state == StepState.WARNING:
-                    content.append("⚠ ", style="yellow")
-                    content.append(f"{project_name}", style="bold yellow")
-                else:
-                    content.append("✓ ", style="green")
-                    content.append(f"{project_name}", style="bold green")
+            has_issues = (
+                project.has_issues() or project.overall_state == StepState.FAILED
+            )
 
-                # Counts
+            # Skip if no issues and not showing all
+            if not has_issues and not show_all:
+                continue
+
+            # Project status icon and name
+            # Only FAILED is red, everything else (including with warnings) is green
+            if project.overall_state == StepState.FAILED:
+                content.append("✗ ", style="red")
+                name_style = "bold red"
+            else:
+                content.append("✓ ", style="green")
+                name_style = "bold green"
+
+            # Show project context name if available, otherwise project name
+            display_name = project.project_context_name or project_name
+            content.append(f"{display_name}", style=name_style)
+
+            # Counts (show if there are any issues) - now with W/CW/E format
+            if has_issues:
                 counts = []
                 if project.total_warnings > 0:
-                    counts.append(f"{project.total_warnings} warning(s)")
+                    counts.append(f"{project.total_warnings}W")
+                if project.total_critical_warnings > 0:
+                    counts.append(f"{project.total_critical_warnings}CW")
                 if project.total_errors > 0:
-                    counts.append(f"{project.total_errors} error(s)")
+                    counts.append(f"{project.total_errors}E")
                 if counts:
-                    content.append(f"  {', '.join(counts)}", style="dim")
-                content.append("\n")
+                    content.append(f" [{'/'.join(counts)}]", style="dim")
+            content.append("\n")
 
-                # Show steps with issues (indented)
+            # Show steps with issues (indented) - only steps that have issues
+            # Steps still show yellow for warnings
+            if has_issues:
                 for step in project.steps:
-                    if step.state in [StepState.WARNING, StepState.FAILED]:
-                        content.append("    ")
-                        if step.state == StepState.WARNING:
-                            content.append("⚠ ", style="yellow")
-                            content.append(f"{step.name}", style="yellow")
-                        else:
+                    if step.state == StepState.FAILED or step.has_issues():
+                        content.append("  ")
+                        if step.state == StepState.FAILED:
                             content.append("✗ ", style="red")
-                            content.append(f"{step.name}", style="red")
+                            content.append(f"{step.name}", style="red dim")
+                        else:
+                            # Warnings show yellow at step level
+                            content.append("⚠ ", style="yellow")
+                            content.append(f"{step.name}", style="yellow dim")
 
                         step_counts = step.get_count_str()
                         if step_counts:
                             content.append(f" [{step_counts}]", style="dim")
                         content.append("\n")
 
-                # Show log file (indented)
-                if project.log_file_path:
-                    content.append("    ")
-                    content.append("Log: ", style="dim")
-                    content.append(f"{project.log_file_path}", style="cyan")
+            # Show extra info items (timing, etc.)
+            for key, info in project.extra_info.items():
+                content.append("  ")
+                content.append(f"{info.label} ", style="dim")
+                content.append(f"{info.value}", style=info.style)
+                content.append("\n")
+                # Show path if provided
+                if info.path:
+                    content.append("  ")
+                    content.append("Report ", style="dim")
+                    content.append(f"{info.path}", style="cyan dim")
                     content.append("\n")
+
+            # Show build artefacts path if available (for build operations)
+            if project.build_artefacts_path:
+                content.append("  ")
+                content.append("Artefacts ", style="dim")
+                content.append(f"{project.build_artefacts_path}", style="cyan dim")
+                content.append("\n")
+
+            # Show log file
+            if project.log_file_path:
+                content.append("  ")
+                content.append("Log ", style="dim")
+                content.append(f"{project.log_file_path}", style="cyan dim")
+                content.append("\n")
 
     def _update_loop(self) -> None:
         """Update loop for Rich display"""
@@ -560,28 +737,36 @@ class LiveStatusDisplay:
                 pass
 
     def _generate_display(self) -> Panel:
-        """Generate Rich display panel using tree view"""
+        """Generate Rich display panel using tree view
+
+        Note: Projects with warnings are grouped under 'Completed' (success),
+        not under a separate 'Warning' category.
+        """
         with self._lock:
             tree = Tree(f"[bold cyan]{self.title}[/bold cyan]")
 
-            # Group projects by state
+            # Group projects by state - WARNING is treated as COMPLETED
             groups = {
                 StepState.RUNNING: [],
-                StepState.COMPLETED: [],
-                StepState.WARNING: [],
+                StepState.COMPLETED: [],  # This now includes projects with warnings
                 StepState.FAILED: [],
                 StepState.PENDING: [],
             }
 
             for name, project in self.projects.items():
-                groups[project.overall_state].append((name, project))
+                state = project.overall_state
+                # Treat WARNING as COMPLETED for grouping purposes, this is because
+                # Vivado ALWAYS produces warnings, so if the result is always a warning,
+                # then it will just make the user sad seeing it all the time
+                if state == StepState.WARNING:
+                    state = StepState.COMPLETED
+                groups[state].append((name, project))
 
-            # Define theme with warning state
+            # Define theme
             state_theme = {
                 StepState.PENDING: ("○", "dim white"),
                 StepState.RUNNING: ("►", "cyan"),
                 StepState.COMPLETED: ("✓", "green"),
-                StepState.WARNING: ("⚠", "yellow"),
                 StepState.FAILED: ("✗", "red"),
                 StepState.SKIPPED: ("—", "dim yellow"),
             }
@@ -595,10 +780,9 @@ class LiveStatusDisplay:
                 StepState.SKIPPED: ("—", "dim yellow"),
             }
 
-            # Add groups to tree (in order: running, warning, failed, completed, pending)
+            # Add groups to tree (in order: running, failed, completed, pending)
             display_order = [
                 StepState.RUNNING,
-                StepState.WARNING,
                 StepState.FAILED,
                 StepState.COMPLETED,
                 StepState.PENDING,
@@ -622,10 +806,7 @@ class LiveStatusDisplay:
                     # Add message summary if any
                     msg_summary = project.get_message_summary()
                     if msg_summary:
-                        summary_color = "yellow" if project.total_errors == 0 else "red"
-                        project_text += (
-                            f" [{summary_color}][{msg_summary}][/{summary_color}]"
-                        )
+                        project_text += f" [dim][{msg_summary}][/dim]"
 
                     # Add elapsed time for running projects
                     if state == StepState.RUNNING:
@@ -677,16 +858,24 @@ class LiveStatusDisplay:
                         if project.message:
                             text += f" [dim]- {project.message}[/dim]"
 
-                        # For failed/warning/completed projects with issues, add a sub-branch with log info
-                        if state in [StepState.FAILED, StepState.WARNING] or (
+                        # For failed projects or completed with issues, add a sub-branch with details
+                        if state == StepState.FAILED or (
                             state == StepState.COMPLETED and msg_summary
                         ):
                             project_branch = branch.add(text)
 
-                            # Show steps with warnings/errors
+                            # Show steps with warnings/errors (steps still show yellow for warnings)
                             for step in project.steps:
-                                if step.state in [StepState.WARNING, StepState.FAILED]:
-                                    step_symbol, step_color = step_theme[step.state]
+                                if step.state == StepState.FAILED or step.has_issues():
+                                    step_symbol, step_color = step_theme.get(
+                                        step.state, ("⚠", "yellow")
+                                    )
+                                    # If step has issues but isn't failed, show as warning
+                                    if (
+                                        step.state != StepState.FAILED
+                                        and step.has_issues()
+                                    ):
+                                        step_symbol, step_color = "⚠", "yellow"
                                     count_str = step.get_count_str()
                                     count_display = (
                                         f" [{count_str}]" if count_str else ""
@@ -694,6 +883,12 @@ class LiveStatusDisplay:
                                     project_branch.add(
                                         f"[{step_color}]{step_symbol} {step.name}{count_display}[/{step_color}]"
                                     )
+
+                            # Show extra info items (timing, etc.)
+                            for key, info in project.extra_info.items():
+                                project_branch.add(
+                                    f"[dim]{info.label}[/dim] [{info.style}]{info.value}[/{info.style}]"
+                                )
 
                             # Add log file path if available
                             if project.log_file_path:

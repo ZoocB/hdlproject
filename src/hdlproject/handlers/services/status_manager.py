@@ -73,6 +73,7 @@ class StatusManager:
         step: str,
         failed: bool = False,
         warning_count: int = 0,
+        critical_warning_count: int = 0,
         error_count: int = 0,
         step_result: Optional[str] = None,
     ) -> None:
@@ -84,6 +85,7 @@ class StatusManager:
             step: Step name
             failed: Whether the step failed
             warning_count: Number of warnings in this step
+            critical_warning_count: Number of critical warnings in this step
             error_count: Number of errors in this step
             step_result: Result type ('success', 'warning', 'error')
         """
@@ -93,6 +95,7 @@ class StatusManager:
                 step,
                 failed=failed,
                 warning_count=warning_count,
+                critical_warning_count=critical_warning_count,
                 error_count=error_count,
                 step_result=step_result,
             )

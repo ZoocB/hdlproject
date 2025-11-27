@@ -241,8 +241,8 @@ if {[file isdirectory $dir]} {
     common::log_status "Appended system $dir to LD_LIBRARY_PATH"
 }
 
-# Initialise allow for user scripts to call internal functions (use set_build_name)
-build_context::initialise
+# Initialise project context (allows user scripts to call set_name)
+project_context::initialise
 
 # ===============================================================================
 # ========================== Load compile order JSON ============================
@@ -430,6 +430,15 @@ if {[dict get $result status] eq "error"} {
 }
 
 # ===============================================================================
+# ======================= Check for errors before proceeding ====================
+# ===============================================================================
+
+if {$workflow_has_errors} {
+    common::log_error "project_workflow" "One or more steps failed during project setup"
+    exit 1
+}
+
+# ===============================================================================
 # ======================= Execute requested action ==============================
 # ===============================================================================
 
@@ -444,6 +453,9 @@ if {$script_mode == $common::BUILD_MODE} {
     exit 0
     
 } elseif {$script_mode == $common::OPEN_MODE} {
+    # Print project context for Python to capture
+    project_context::print_context
+    
     # Open project in GUI
     common::log_status "Opening Vivado GUI"
     start_gui

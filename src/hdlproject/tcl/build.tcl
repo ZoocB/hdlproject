@@ -3,12 +3,16 @@
 namespace eval build {
     # Execute build process
     proc execute {repo_prj_dir project_dir num_build_cores top_level_file_name} {
-        # Get project name
+        # Get project name from config
         set project_info [config::get_project_info]
         set project_name [dict get $project_info project_name]
         
-        # Get build name from build context
-        set file_name [build_context::get_build_name]
+        # Get build name from project context
+        set file_name [project_context::get_name]
+        
+        # Set artefacts path
+        set artefacts_path "${repo_prj_dir}/build_artefacts"
+        project_context::set_artefacts_path $artefacts_path
 
         # Display information about build
         common::log_status ""
@@ -45,33 +49,22 @@ namespace eval build {
         open_checkpoint "${project_dir}/${project_name}.runs/impl_1/${top_level_file_name}_routed.dcp" -part [dict get [config::get_device_info] part_name]
         
         # Write hardware platform
-        write_hw_platform -fixed -force -file "${repo_prj_dir}/build_artefacts/${file_name}.xsa"
+        write_hw_platform -fixed -force -file "${artefacts_path}/${file_name}.xsa"
         
         # Copy output files
         set impl_dir "${project_dir}/${project_name}.runs/impl_1"
         
-        if {[catch {eval exec cp ${impl_dir}/${top_level_file_name}.bit ${repo_prj_dir}/build_artefacts/${file_name}.bit} result]} {
+        if {[catch {eval exec cp ${impl_dir}/${top_level_file_name}.bit ${artefacts_path}/${file_name}.bit} result]} {
             common::log_warning "build" "problem copying bit file: $result"
         }
         
-        if {[catch {eval exec cp ${impl_dir}/${top_level_file_name}.ltx ${repo_prj_dir}/build_artefacts/${file_name}.ltx} result]} {
+        if {[catch {eval exec cp ${impl_dir}/${top_level_file_name}.ltx ${artefacts_path}/${file_name}.ltx} result]} {
             common::log_warning "build" "problem copying ltx file: $result"
         }
         
-        # Check timing
-        set report_timing_output [report_timing \
-                                -nworst 1 \
-                                -slack_lesser_than 0 \
-                                -return_string]
-        
-        # Check for timing violations
-        if {[string match "*No timing paths found*" $report_timing_output]} {
-            common::log_status "SUCCESS: No Timing Violations"
-        } else {
-            common::log_error "build" "Timing Violations Found"
-            common::log_error "build" "Open Build project to view timing errors in Vivado GUI, or;" 
-            common::log_error "build" "open Timing Summary Routed .rpt file and search for `VIOLATED` key word"
-        }
+        # Check timing and output result for Python
+        set timing_report_path "$project_dir/${project_name}.runs/impl_1/${top_level_file_name}_timing_summary_routed.rpt"
+        set timing_passed [check_timing $timing_report_path]
         
         # Calculate build time
         set end_time_impl [clock seconds]
@@ -93,7 +86,7 @@ namespace eval build {
         
         # Change to the directory containing the files
         set original_dir [pwd]
-        cd ${repo_prj_dir}/build_artefacts
+        cd ${artefacts_path}
         
         # Remove existing zip file if it exists
         file delete -force $zip_file_name
@@ -104,90 +97,45 @@ namespace eval build {
         } result]} {
             common::log_warning "build" "problem zipping files: $result"
         } else {
-            set realpath [file normalize ${repo_prj_dir}/build_artefacts/]
+            set realpath [file normalize ${artefacts_path}/]
             common::log_status "Files successfully zipped to $realpath"
         }
         
         # Change back to the original directory
         cd $original_dir
         
+        # Print project context for Python to capture
+        project_context::print_context
+        
+        # Return error if timing failed
+        if {!$timing_passed} {
+            return [common::return_error "build" "Timing violations detected"]
+        }
+        
         return [common::return_success {}]
     }
-}
-
-namespace eval build_context {
-    variable build_name ""
     
-    # initialise with default name
-    proc initialise {} {
-        variable build_name
+    # Check timing and output result for Python to capture
+    # Returns 1 if timing passed, 0 if failed
+    proc check_timing {timing_report_path} {
+        # Use report_timing to check for violations
+        # -slack_lesser_than 0 returns only paths with negative slack (violations)
+        set report_timing_output [report_timing \
+                                -nworst 1 \
+                                -slack_lesser_than 0 \
+                                -return_string]
         
-        # Get config info
-        set project_info [config::get_project_info]
-        set device_info [config::get_device_info]
-        
-        set project_name [dict get $project_info project_name]
-        set upper_project_name [string toupper $project_name]
-        
-        if {[dict exists $device_info board_name]} {
-            set board_name [dict get $device_info board_name]
-            set upper_board_name [string toupper $board_name]
+        # Check for timing violations
+        if {[string match "*No timing paths found*" $report_timing_output]} {
+            common::log_status "Timing: PASSED - No timing violations"
+            common::print_timing_result "PASSED" $timing_report_path
+            return 1
         } else {
-            set upper_board_name "UNKNOWN"
+            common::log_error "build" "Timing: FAILED - Timing violations detected"
+            common::log_error "build" "Open Build project to view timing errors in Vivado GUI, or"
+            common::log_error "build" "open Timing Summary Routed .rpt file and search for 'VIOLATED' keyword"
+            common::print_timing_result "FAILED" $timing_report_path
+            return 0
         }
-        
-        # Get git info
-        if {[catch {exec git rev-parse --abbrev-ref HEAD} git_branch]} {
-            set git_branch "unknown"
-        }
-        
-        if {[catch {exec git config user.name} git_user_name]} {
-            set git_user_name "Unknown User"
-        }
-        set git_initials [get_initials $git_user_name]
-        
-        # Default version and build info
-        set major_version "0"
-        set minor_version "0"
-        set patch_version "0"
-        set build_number "0"
-        set build_revision "0"
-        
-        # Generate metadata
-        if {$build_revision == 0} {
-            set meta_data "${git_initials}.${git_branch}"
-        } else {
-            set meta_data "${git_initials}.${git_branch}.r${build_revision}"
-        }
-        
-        # Generate default build name
-        set build_name "${upper_project_name}_${upper_board_name}_v${major_version}.${minor_version}.${patch_version}+${build_number}.${meta_data}"
-        
-        common::log_info  "Default build name: $build_name"
-    }
-    
-    # Helper function to get initials from a name
-    proc get_initials {name} {
-        set parts [split $name " "]
-        set initials ""
-        foreach part $parts {
-            if {[string length $part] > 0} {
-                append initials [string toupper [string index $part 0]]
-            }
-        }
-        return $initials
-    }
-    
-    # User-facing function to override the build name
-    proc set_build_name {name} {
-        variable build_name
-        set build_name $name
-        common::log_info  "Build name set to: $build_name"
-    }
-    
-    # Get the current build name
-    proc get_build_name {} {
-        variable build_name
-        return $build_name
     }
 }
