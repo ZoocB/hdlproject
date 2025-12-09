@@ -1,26 +1,30 @@
-# handlers/open_project.py
-"""Open project handler - refactored with service composition and step result patterns"""
+"""Open project handler - opens Vivado projects for editing.
+
+This handler opens Vivado in GUI mode with the project loaded.
+"""
 
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Optional
 
 from hdlproject.handlers.base.handler import BaseHandler
-from hdlproject.handlers.base.context import ExecutionContext, SingleProjectContext
 from hdlproject.handlers.base.operation_config import OperationConfig
 from hdlproject.handlers.registry import HandlerInfo, register_handler
+from hdlproject.runtime.context import ExecutionContext, SingleProjectExecution
 from hdlproject.utils.vivado_output_parser import StepPattern
 from hdlproject.utils.logging_manager import get_project_logger
 
 
 @dataclass
-class OpenOptions:
-    """Open operation options"""
+class OpenHandlerOptions:
+    """Open operation options."""
 
     mode: str = "edit"  # 'edit' or 'build'
     clean: bool = False
 
 
 class OpenProjectHandler(BaseHandler):
-    """Handler for opening projects"""
+    """Handler for opening Vivado projects."""
 
     CONFIG = OperationConfig(
         name="open",
@@ -29,7 +33,7 @@ class OpenProjectHandler(BaseHandler):
             # Start patterns for initial setup
             StepPattern.start("Loading Configuration", r"Loading configuration from"),
             StepPattern.start("Setting up Project", r"Setting up Project"),
-            # TCL step patterns - auto-expand to SUCCESS/WARNING/ERROR
+            # TCL step patterns
             StepPattern.tcl("Processing IP Cores", "handle_xcis::process_xcis"),
             StepPattern.tcl(
                 "Loading HDL Sources", "handle_source_files::process_source_files"
@@ -58,7 +62,7 @@ class OpenProjectHandler(BaseHandler):
                 "Applying Implementation Options",
                 "handle_impl_settings::apply_custom_impl_options",
             ),
-            # Opening GUI - start pattern (GUI opens after this, process doesn't return)
+            # Opening GUI
             StepPattern.start("Opening GUI", r"Opening Vivado GUI"),
         ],
         operation_steps=[
@@ -80,84 +84,96 @@ class OpenProjectHandler(BaseHandler):
     )
 
     def configure(self, context: ExecutionContext) -> None:
-        """Display open configuration"""
+        """Display open configuration."""
         print("\n" + "=" * 50)
         print("Open Configuration")
         print("=" * 50)
-        print(f"Projects: {len(context.projects)}")
-        print(f"Mode: {context.options.mode}")
-        print(f"Clean: {'Yes' if context.options.clean else 'No'}")
+        print(f"Projects: {len(context.project_runtimes)}")
+        print(f"Mode: {context.handler_options.mode}")
+        print(f"Clean: {'Yes' if context.handler_options.clean else 'No'}")
         print("\nProjects to open:")
-        for proj_ctx in context.projects:
-            print(f"  - {proj_ctx.config.name}")
+        for runtime in context.project_runtimes:
+            print(f"  - {runtime.project_name}")
         print("=" * 50 + "\n")
 
-    def prepare(self, context: SingleProjectContext) -> None:
-        """Prepare for open operation"""
-        project_logger = get_project_logger(context.project.config.name)
+    def prepare(self, context: SingleProjectExecution) -> None:
+        """Prepare for open operation."""
+        project_logger = get_project_logger(context.project_name)
 
-        if context.options.mode == "edit":
+        if context.handler_options.mode == "edit":
             # Edit mode: generate compile order if available
-            if context.compile_order_service.is_available():
-                compile_order_path = context.compile_order_service.generate_for_project(
-                    context.project
-                )
-                context.project.compile_order_path = compile_order_path
+            if context.services.compile_order_service.is_available():
+                context.services.compile_order_service.generate(context.operation_paths)
 
-        elif context.options.mode == "build":
+        elif context.handler_options.mode == "build":
             # Build mode: verify project exists
-            xpr_path = self._find_project_file(context.project.config.name, ["build"])
+            xpr_path = self._find_build_project(context.runtime)
 
             if not xpr_path:
                 raise FileNotFoundError(
-                    f"Build project not found for {context.project.config.name}. "
+                    f"Build project not found for {context.project_name}. "
                     "Please build the project first."
                 )
 
             # Store path for execution
-            context.project.build_xpr_path = xpr_path
+            context.runtime._build_xpr_path = xpr_path
 
-    def execute_single(self, context: SingleProjectContext) -> bool:
-        """Execute open operation"""
-        if context.options.mode == "edit":
+    def execute_single(self, context: SingleProjectExecution) -> bool:
+        """Execute open operation."""
+        if context.handler_options.mode == "edit":
             return self._open_for_edit(context)
         else:
             return self._open_build_project(context)
 
-    def _open_for_edit(self, context: SingleProjectContext) -> bool:
-        """Open project for editing using TCL workflow"""
-        result = context.vivado_executor.execute(
-            project_context=context.project,
+    def _open_for_edit(self, context: SingleProjectExecution) -> bool:
+        """Open project for editing using TCL workflow."""
+        result = context.services.vivado_executor.execute(
+            runtime=context.runtime,
+            global_config=self.environment.global_config,
+            operation_paths=context.operation_paths,
             tcl_mode=self.CONFIG.tcl_mode,
             step_patterns=self.CONFIG.step_patterns,
-            status_display=context.status_manager.display,
+            status_display=context.services.status_manager.display,
         )
         return result.success
 
-    def _open_build_project(self, context: SingleProjectContext) -> bool:
-        """Open existing build project directly in GUI"""
-        project_logger = get_project_logger(context.project.config.name)
+    def _open_build_project(self, context: SingleProjectExecution) -> bool:
+        """Open existing build project directly in GUI."""
+        project_logger = get_project_logger(context.project_name)
 
-        if not hasattr(context.project, "build_xpr_path"):
+        if not hasattr(context.runtime, "_build_xpr_path"):
             project_logger.error("Build project path not found")
             return False
 
         # Update status
-        context.status_manager.start_project(context.project.config.name)
-        context.status_manager.update_step(context.project.config.name, "Opening GUI")
+        context.services.status_manager.start_project(context.project_name)
+        context.services.status_manager.update_step(context.project_name, "Opening GUI")
 
         # Open GUI
-        success = context.vivado_executor.execute_gui(
-            project_path=context.project.build_xpr_path,
-            vivado_version=context.project.config.vivado_version,
+        success = context.services.vivado_executor.execute_gui(
+            runtime=context.runtime,
+            global_config=self.environment.global_config,
+            project_path=context.runtime._build_xpr_path,
         )
 
         # Complete status
-        context.status_manager.complete_project(
-            context.project.config.name, success=success
+        context.services.status_manager.complete_project(
+            context.project_name,
+            success=success,
         )
 
         return success
+
+    def _find_build_project(self, runtime) -> Optional[Path]:
+        """Find existing build project .xpr file."""
+        # Check in build operation directory
+        build_paths = runtime.get_operation_paths("build")
+        xpr_path = build_paths.get_project_file(runtime.project_name)
+
+        if xpr_path.exists():
+            return xpr_path
+
+        return None
 
 
 # Register handler
@@ -165,7 +181,7 @@ register_handler(
     HandlerInfo(
         name="open",
         handler_class=OpenProjectHandler,
-        options_class=OpenOptions,
+        options_class=OpenHandlerOptions,
         description="Open Vivado projects",
         menu_name="Open Project",
         cli_arguments=[
