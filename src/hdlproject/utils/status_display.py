@@ -575,156 +575,93 @@ class LiveStatusDisplay:
 
     def _print_final_summary(self) -> None:
         from rich.console import Console
-        from rich.panel import Panel
-        from rich.text import Text
-        from rich import box
+        from rich.rule import Rule
 
         console = Console()
 
         with self._lock:
-            success_count = 0
-            failed_count = 0
+            failed = [
+                p for p in self.projects.values() if p.overall_state == StepState.FAILED
+            ]
+            succeeded = [
+                p for p in self.projects.values() if p.overall_state != StepState.FAILED
+            ]
 
-            for project_name, project in sorted(self.projects.items()):
-                if project.overall_state == StepState.FAILED:
-                    failed_count += 1
-                else:
-                    success_count += 1
-
-            total = success_count + failed_count
-
-            if failed_count > 0:
-                status_text = "FAILED"
-                status_style = "bold red"
-                border_style = "red"
-            else:
-                status_text = "SUCCESS"
-                status_style = "bold green"
-                border_style = "green"
-
-            content = Text()
-            content.append(f"{status_text}", style=status_style)
-            content.append(" · ", style="dim")
-
-            parts = []
-            if failed_count > 0:
-                parts.append(f"{failed_count} failed")
-            if success_count > 0:
-                parts.append(f"{success_count} succeeded")
-            content.append(" · ".join(parts), style="dim")
-            content.append("\n")
-
-            self._append_project_details(content, show_all=(failed_count == 0))
-
-            content.append("\n")
-            app_log = Path.cwd() / "bin" / "hdlproject.log"
-            content.append("App Log ", style="dim")
-            content.append(f"{app_log}", style="cyan dim")
-
-            # Calculate width - use terminal width but enforce minimum
-            panel_width = max(console.width, 60) if console.width else None
+            style = "red" if failed else "green"
+            status = "FAILED" if failed else "SUCCESS"
 
             print()
             console.print(
-                Panel(
-                    content,
-                    title=f"[bold]{self.title.replace(' Operations', '')}[/bold]",
-                    border_style=border_style,
-                    box=box.ROUNDED,
-                    padding=(0, 1),
-                    width=panel_width,
+                Rule(
+                    f"[bold]{self.title.replace(' Operations', '')}[/bold]", style=style
                 )
             )
 
-    def _append_project_details(self, content: "Text", show_all: bool = False) -> None:
-        """Append project details to Rich Text content
+            parts = [f"[bold {style}]{status}[/bold {style}]"]
+            if failed:
+                parts.append(f"{len(failed)} failed")
+            if succeeded:
+                parts.append(f"{len(succeeded)} succeeded")
+            console.print(" · ".join(parts))
+            console.print()
 
-        Projects with warnings show as green success with warning counts.
-        Only failed projects show as red.
-        Steps with warnings still show yellow.
-        """
-        from rich.text import Text
+            # Project details
+            for name, project in sorted(self.projects.items()):
+                has_issues = (
+                    project.has_issues() or project.overall_state == StepState.FAILED
+                )
+                if not has_issues and failed:
+                    continue
 
-        for project_name, project in sorted(self.projects.items()):
-            has_issues = (
-                project.has_issues() or project.overall_state == StepState.FAILED
-            )
+                display_name = project.project_context_name or name
+                if project.overall_state == StepState.FAILED:
+                    console.print(
+                        f"[red]✗[/red] [bold red]{display_name}[/bold red]", end=""
+                    )
+                else:
+                    console.print(
+                        f"[green]✓[/green] [bold green]{display_name}[/bold green]",
+                        end="",
+                    )
 
-            # Skip if no issues and not showing all
-            if not has_issues and not show_all:
-                continue
+                counts = (
+                    [f"{project.total_warnings}W"] if project.total_warnings else []
+                )
+                counts += (
+                    [f"{project.total_critical_warnings}CW"]
+                    if project.total_critical_warnings
+                    else []
+                )
+                counts += [f"{project.total_errors}E"] if project.total_errors else []
+                console.print(f" [dim][{'/'.join(counts)}][/dim]" if counts else "")
 
-            # Project status icon and name
-            # Only FAILED is red, everything else (including with warnings) is green
-            if project.overall_state == StepState.FAILED:
-                content.append("✗ ", style="red")
-                name_style = "bold red"
-            else:
-                content.append("✓ ", style="green")
-                name_style = "bold green"
-
-            # Show project context name if available, otherwise project name
-            display_name = project.project_context_name or project_name
-            content.append(f"{display_name}", style=name_style)
-
-            # Counts (show if there are any issues) - now with W/CW/E format
-            if has_issues:
-                counts = []
-                if project.total_warnings > 0:
-                    counts.append(f"{project.total_warnings}W")
-                if project.total_critical_warnings > 0:
-                    counts.append(f"{project.total_critical_warnings}CW")
-                if project.total_errors > 0:
-                    counts.append(f"{project.total_errors}E")
-                if counts:
-                    content.append(f" [{'/'.join(counts)}]", style="dim")
-            content.append("\n")
-
-            # Show steps with issues (indented) - only steps that have issues
-            # Steps still show yellow for warnings
-            if has_issues:
                 for step in project.steps:
-                    if step.state == StepState.FAILED or step.has_issues():
-                        content.append("  ")
-                        if step.state == StepState.FAILED:
-                            content.append("✗ ", style="red")
-                            content.append(f"{step.name}", style="red dim")
-                        else:
-                            # Warnings show yellow at step level
-                            content.append("⚠ ", style="yellow")
-                            content.append(f"{step.name}", style="yellow dim")
+                    if step.state == StepState.FAILED:
+                        console.print(
+                            f"  [red]✗ {step.name}[/red] [dim][{step.get_count_str()}][/dim]"
+                            if step.get_count_str()
+                            else f"  [red]✗ {step.name}[/red]"
+                        )
+                    elif step.has_issues():
+                        console.print(
+                            f"  [yellow]⚠ {step.name}[/yellow] [dim][{step.get_count_str()}][/dim]"
+                        )
 
-                        step_counts = step.get_count_str()
-                        if step_counts:
-                            content.append(f" [{step_counts}]", style="dim")
-                        content.append("\n")
+                for info in project.extra_info.values():
+                    console.print(
+                        f"  [dim]{info.label}[/dim] [{info.style}]{info.value}[/{info.style}]"
+                    )
+                    if info.path:
+                        print(f"  Report {info.path}")  # Plain print - no wrapping
 
-            # Show extra info items (timing, etc.)
-            for key, info in project.extra_info.items():
-                content.append("  ")
-                content.append(f"{info.label} ", style="dim")
-                content.append(f"{info.value}", style=info.style)
-                content.append("\n")
-                # Show path if provided
-                if info.path:
-                    content.append("  ")
-                    content.append("Report ", style="dim")
-                    content.append(f"{info.path}", style="cyan dim")
-                    content.append("\n")
+                if project.build_artefacts_path:
+                    print(f"  Artefacts {project.build_artefacts_path}")  # Plain print
+                if project.log_file_path:
+                    print(f"  Log {project.log_file_path}")  # Plain print
 
-            # Show build artefacts path if available (for build operations)
-            if project.build_artefacts_path:
-                content.append("  ")
-                content.append("Artefacts ", style="dim")
-                content.append(f"{project.build_artefacts_path}", style="cyan dim")
-                content.append("\n")
-
-            # Show log file
-            if project.log_file_path:
-                content.append("  ")
-                content.append("Log ", style="dim")
-                content.append(f"{project.log_file_path}", style="cyan dim")
-                content.append("\n")
+            console.print()
+            print(f"App Log {Path.cwd() / 'bin' / 'hdlproject.log'}")  # Plain print
+            console.print(Rule(style=style))
 
     def _update_loop(self) -> None:
         """Update loop for Rich display"""

@@ -152,6 +152,24 @@ class ProjectInformation(FlexibleModel):
         return year, sub
 
 
+class WriteHwPlatformOptions(FlexibleModel):
+    """Options for the write_hw_platform Vivado command."""
+
+    include_bit: bool = Field(
+        default=False,
+        description="Include bitstream in the hardware platform file (.xsa). Maps to -include_bit flag.",
+    )
+
+
+class BuildOptions(FlexibleModel):
+    """Build-time options controlling the synthesis and implementation process."""
+
+    write_hw_platform: WriteHwPlatformOptions = Field(
+        default_factory=WriteHwPlatformOptions,
+        description="Options for generating the hardware platform file (.xsa).",
+    )
+
+
 class ProjectConfiguration(FlexibleModel):
     """Root configuration model for HDL projects.
 
@@ -181,6 +199,10 @@ class ProjectConfiguration(FlexibleModel):
     impl_options: dict[str, str] = Field(
         default_factory=dict,
         description="Vivado implementation options. Keys are property names (e.g., STEPS.OPT_DESIGN.ARGS.DIRECTIVE), values are property values. Maps to set_property -name <key> -value <value>.",
+    )
+    build_options: BuildOptions = Field(
+        default_factory=BuildOptions,
+        description="Build-time options controlling synthesis, implementation, and output generation.",
     )
     environment_setup: Optional[dict[str, str]] = Field(
         default=None,

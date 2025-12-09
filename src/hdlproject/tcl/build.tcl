@@ -49,7 +49,16 @@ namespace eval build {
         open_checkpoint "${project_dir}/${project_name}.runs/impl_1/${top_level_file_name}_routed.dcp" -part [dict get [config::get_device_info] part_name]
         
         # Write hardware platform
-        write_hw_platform -fixed -force -file "${artefacts_path}/${file_name}.xsa"
+        set build_options [config::get_build_options]
+        set hw_platform_args [list -fixed -force -file "${artefacts_path}/${file_name}.xsa"]
+        
+        if {[dict exists $build_options write_hw_platform include_bit] && 
+            [dict get $build_options write_hw_platform include_bit]} {
+            lappend hw_platform_args -include_bit
+            common::log_status "write_hw_platform: including bitstream in XSA"
+        }
+        
+        write_hw_platform {*}$hw_platform_args
         
         # Copy output files
         set impl_dir "${project_dir}/${project_name}.runs/impl_1"

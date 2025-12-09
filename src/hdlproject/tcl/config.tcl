@@ -83,6 +83,16 @@ namespace eval config {
         return {}
     }
     
+    # Get build options as a dictionary
+    proc get_build_options {} {
+        variable config_dict
+        
+        if {[dict exists $config_dict build_options]} {
+            return [dict get $config_dict build_options]
+        }
+        return {}
+    }
+    
     # Apply synthesis options to project
     proc apply_synth_options {project_name} {
         set synth_options [get_synth_options]

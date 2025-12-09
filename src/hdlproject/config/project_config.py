@@ -64,6 +64,7 @@ class ProjectConfig:
     # Build options
     synthesis_options: dict[str, Any] = field(default_factory=dict)
     implementation_options: dict[str, Any] = field(default_factory=dict)
+    build_options: dict[str, Any] = field(default_factory=dict)
 
     # Resolved configuration path
     resolved_configuration_path: Optional[Path] = None
@@ -149,6 +150,7 @@ class ProjectConfig:
             block_designs=[bd.model_dump() for bd in pydantic_config.block_designs],
             synthesis_options=pydantic_config.synth_options,
             implementation_options=pydantic_config.impl_options,
+            build_options=pydantic_config.build_options.model_dump(),
         )
 
         config._pydantic_model = pydantic_config
