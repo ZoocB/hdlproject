@@ -93,7 +93,7 @@ class StepPattern:
         Create a StepPattern for step start detection.
 
         During Vivado steps (start/complete), regular Vivado errors,
-        warnings, and critical warnings ARE tracked.
+        warnings, and critical warnings are tracked.
 
         Args:
             step_name: User-facing step name

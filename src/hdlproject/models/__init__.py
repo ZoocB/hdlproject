@@ -1,22 +1,31 @@
 # models/__init__.py
-"""Pydantic models for project configuration"""
 
 from hdlproject.models.models import (
     FlexibleModel,
+    VivadoVersion,
+    VivadoExecutor,
+    GlobalConfiguration,
     DeviceInfo,
     Generic,
+    ProjectInformation,
     Constraint,
     BlockDesign,
-    ProjectInformation,
-    ProjectConfiguration
+    WriteHwPlatformOptions,
+    BuildConfiguration,
+    ProjectConfiguration,
 )
 
 __all__ = [
-    'FlexibleModel',
-    'DeviceInfo',
-    'Generic',
-    'Constraint',
-    'BlockDesign',
-    'ProjectInformation',
-    'ProjectConfiguration'
+    "FlexibleModel",
+    "VivadoVersion",
+    "VivadoExecutor",
+    "GlobalConfiguration",
+    "DeviceInfo",
+    "Generic",
+    "ProjectInformation",
+    "Constraint",
+    "BlockDesign",
+    "WriteHwPlatformOptions",
+    "BuildConfiguration",
+    "ProjectConfiguration",
 ]

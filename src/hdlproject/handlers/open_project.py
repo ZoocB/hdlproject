@@ -98,25 +98,12 @@ class OpenProjectHandler(BaseHandler):
 
     def prepare(self, context: SingleProjectExecution) -> None:
         """Prepare for open operation."""
-        project_logger = get_project_logger(context.project_name)
-
         if context.handler_options.mode == "edit":
-            # Edit mode: generate compile order if available
-            if context.services.compile_order_service.is_available():
-                context.services.compile_order_service.generate(context.operation_paths)
-
-        elif context.handler_options.mode == "build":
-            # Build mode: verify project exists
-            xpr_path = self._find_build_project(context.runtime)
-
-            if not xpr_path:
-                raise FileNotFoundError(
-                    f"Build project not found for {context.project_name}. "
-                    "Please build the project first."
-                )
-
-            # Store path for execution
-            context.runtime._build_xpr_path = xpr_path
+            # Edit mode: prepare compile order
+            context.services.compile_order_service.prepare_for_operation(
+                context.operation_paths
+            )
+        # Build mode: validation done in execute_single to avoid dynamic attributes
 
     def execute_single(self, context: SingleProjectExecution) -> bool:
         """Execute open operation."""
@@ -127,6 +114,10 @@ class OpenProjectHandler(BaseHandler):
 
     def _open_for_edit(self, context: SingleProjectExecution) -> bool:
         """Open project for editing using TCL workflow."""
+        extra_commands = context.services.compile_order_service.get_extra_commands(
+            context.operation_paths
+        )
+
         result = context.services.vivado_executor.execute(
             runtime=context.runtime,
             global_config=self.environment.global_config,
@@ -134,6 +125,7 @@ class OpenProjectHandler(BaseHandler):
             tcl_mode=self.CONFIG.tcl_mode,
             step_patterns=self.CONFIG.step_patterns,
             status_display=context.services.status_manager.display,
+            extra_commands=extra_commands,
         )
         return result.success
 
@@ -141,8 +133,13 @@ class OpenProjectHandler(BaseHandler):
         """Open existing build project directly in GUI."""
         project_logger = get_project_logger(context.project_name)
 
-        if not hasattr(context.runtime, "_build_xpr_path"):
-            project_logger.error("Build project path not found")
+        # Find the build project
+        xpr_path = self._find_build_project(context.runtime)
+        if not xpr_path:
+            project_logger.error(
+                f"Build project not found for {context.project_name}. "
+                "Please build the project first."
+            )
             return False
 
         # Update status
@@ -153,7 +150,7 @@ class OpenProjectHandler(BaseHandler):
         success = context.services.vivado_executor.execute_gui(
             runtime=context.runtime,
             global_config=self.environment.global_config,
-            project_path=context.runtime._build_xpr_path,
+            project_path=xpr_path,
         )
 
         # Complete status
@@ -168,7 +165,8 @@ class OpenProjectHandler(BaseHandler):
         """Find existing build project .xpr file."""
         # Check in build operation directory
         build_paths = runtime.get_operation_paths("build")
-        xpr_path = build_paths.get_project_file(runtime.project_name)
+        # Use vivado_project_name - the .xpr is named after the YAML project name
+        xpr_path = build_paths.get_project_file(runtime.vivado_project_name)
 
         if xpr_path.exists():
             return xpr_path

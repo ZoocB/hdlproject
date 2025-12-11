@@ -1,17 +1,22 @@
-# handlers/__init__.py
-"""Handler package - handlers self-register when imported"""
+"""Handlers module.
 
-# Re-export registry functions for convenience
+This module provides handlers for various operations (build, export, etc.)
+"""
+
 from hdlproject.handlers.registry import (
+    HandlerInfo,
+    register_handler,
     get_handler,
     get_all_handlers,
     get_menu_handlers,
-    load_all_handlers
+    load_all_handlers,
 )
 
 __all__ = [
-    'get_handler',
-    'get_all_handlers', 
-    'get_menu_handlers',
-    'load_all_handlers'
+    "HandlerInfo",
+    "register_handler",
+    "get_handler",
+    "get_all_handlers",
+    "get_menu_handlers",
+    "load_all_handlers",
 ]

@@ -4,9 +4,11 @@
 import subprocess
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
+from hdlproject.config.loader import ConfigLoader
 from hdlproject.config.repository import RepositoryConfigManager
+from hdlproject.runtime.context import RuntimeEnvironment
 from hdlproject.utils.logging_manager import (
     setup_application_log,
     set_verbosity,
@@ -33,6 +35,7 @@ class Application:
         project_dir: Path,
         compile_order_format: str,
         verbosity: LogLevel,
+        vivado_location: Optional[Path] = None,
     ):
         """
         Initialise application with resolved configuration.
@@ -42,6 +45,7 @@ class Application:
             project_dir: Projects base directory
             compile_order_format: Compile order output format
             verbosity: Logging verbosity level
+            vivado_location: Optional Vivado installation path (for validation)
         """
         # Set verbosity first
         set_verbosity(verbosity)
@@ -55,13 +59,11 @@ class Application:
         self.project_dir = project_dir
         self.compile_order_format = compile_order_format
 
-        # Create handler environment (replaces BaseHandler.Initialise)
-        self.handler_environment = {
-            "project_dir": project_dir,
-            "repository_root": git_root,
-            "vivado_location": Path("/tools/Xilinx/Vivado"),
-            "compile_order_format": compile_order_format,
-        }
+        # Create RuntimeEnvironment (replaces legacy dict)
+        self.runtime_environment = self._create_runtime_environment(
+            git_root=git_root,
+            vivado_location=vivado_location,
+        )
 
         # Load all handlers
         load_all_handlers()
@@ -70,6 +72,31 @@ class Application:
         logger.info(f"Git root: {git_root}")
         logger.info(f"Project dir: {project_dir}")
         logger.info(f"Compile order format: {compile_order_format}")
+
+    def _create_runtime_environment(
+        self,
+        git_root: Path,
+        vivado_location: Optional[Path] = None,
+    ) -> RuntimeEnvironment:
+        """
+        Create the RuntimeEnvironment for handlers.
+
+        Args:
+            git_root: Git repository root
+            vivado_location: Optional Vivado installation path
+
+        Returns:
+            RuntimeEnvironment with global config loaded
+        """
+        # Load global configuration
+        config_loader = ConfigLoader(git_root)
+        global_config = config_loader.load_global_config()
+
+        return RuntimeEnvironment(
+            repository_root=git_root,
+            global_config=global_config,
+            vivado_location=vivado_location,
+        )
 
     @classmethod
     def from_args(cls, args) -> "Application":
@@ -101,12 +128,17 @@ class Application:
         repo_config = RepositoryConfigManager(git_root).load()
         compile_format = (
             getattr(args, "compile_order_format", None)
-            or repo_config.compile_order_script_format
+            or repo_config.compile_order_format
             or "json"
         )
 
         # Step 5: Map verbosity from args
         verbosity = cls._map_verbosity(args)
+
+        # Step 6: Get Vivado location if specified
+        vivado_location = getattr(args, "vivado_location", None)
+        if vivado_location:
+            vivado_location = Path(vivado_location)
 
         # Create instance
         return cls(
@@ -114,6 +146,7 @@ class Application:
             project_dir=project_dir,
             compile_order_format=compile_format,
             verbosity=verbosity,
+            vivado_location=vivado_location,
         )
 
     @staticmethod
@@ -217,7 +250,7 @@ class Application:
         raise RuntimeError(
             "Project directory not specified. Use one of:\n"
             f"  1. CLI: --project-dir /path/to/projects\n"
-            f"  2. Config: Set 'project_dir' in {git_root / 'hdlproject_config.json'}"
+            f"  2. Config: Set 'project_dir' in {git_root / 'hdlproject_global_config.yaml'}"
         )
 
     @staticmethod
@@ -248,6 +281,7 @@ class Application:
             projects: list of project names
             options_dict: dictionary of handler options
             interactive: Whether running in interactive/menu mode
+            return_handler: Whether to return the handler instance
 
         Raises:
             ValueError: If handler not found
@@ -267,9 +301,10 @@ class Application:
         logger.info(f"Interactive mode: {interactive}")
         logger.info(f"{'='*60}")
 
-        # Create handler with environment and options
+        # Create handler with RuntimeEnvironment
         handler = handler_info.create_handler(
-            environment=self.handler_environment, interactive=interactive
+            environment=self.runtime_environment,
+            interactive=interactive,
         )
         options = handler_info.create_options(**options_dict)
 
@@ -287,7 +322,8 @@ class Application:
         handler_info = get_handler("build")
         if handler_info:
             handler = handler_info.create_handler(
-                environment=self.handler_environment, interactive=False
+                environment=self.runtime_environment,
+                interactive=False,
             )
             return handler.get_project_list()
         return []

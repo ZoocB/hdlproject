@@ -1,12 +1,22 @@
-# handlers/services/vivado_executor.py
-"""Service for executing Vivado processes"""
+"""Service for executing Vivado processes.
+
+This module handles all Vivado process execution, using the VivadoExecutor
+configuration to properly set up the environment. Supports both local
+installations and Docker-based execution.
+
+Execution flow:
+    [shell] → [setup] → [extra_commands (e.g., hdldepends)] → [executable (vivado)]
+"""
 
 import os
 import subprocess
+import shlex
 from pathlib import Path
 from dataclasses import dataclass
+from typing import Optional
 
-from hdlproject.handlers.base.context import ProjectContext
+from hdlproject.models.models import GlobalConfiguration
+from hdlproject.runtime.context import ProjectRuntime, OperationPaths
 from hdlproject.core.output_processor import VivadoOutputProcessor
 from hdlproject.utils.vivado_output_parser import VivadoOutputParser, StepPattern
 from hdlproject.utils.resources import get_tcl_script
@@ -17,123 +27,121 @@ logger = get_logger(__name__)
 
 @dataclass
 class ExecutionResult:
-    """Result of Vivado execution"""
+    """Result of Vivado execution."""
 
     success: bool
     error_lines: list[str]
     exit_code: int = 0
 
 
-class VivadoExecutor:
-    """Handles all Vivado process execution"""
+class VivadoExecutorService:
+    """Service for executing Vivado processes.
+
+    Uses the VivadoExecutor configuration to properly set up the environment
+    before running Vivado commands. Supports injecting additional commands
+    (like hdldepends) that run before Vivado in the same shell session.
+    """
+
+    def _prepare_popen_args(
+        self,
+        shell_args: list[str],
+        stdin_content: Optional[str],
+    ) -> list[str]:
+        """Prepare arguments for Popen based on execution mode.
+
+        Args:
+            shell_args: Shell arguments from build_command()
+            stdin_content: Heredoc content if any
+
+        Returns:
+            Arguments list for subprocess.Popen
+        """
+        if stdin_content:
+            # Heredoc mode - split the invoke command
+            return shlex.split(shell_args[0])
+        return shell_args
+
+    def _handle_execution_failure(
+        self,
+        project_name: str,
+        error_msg: str,
+        log_path: Path,
+        shell_args: list[str],
+        stdin_content: Optional[str],
+        status_display,
+        exit_code: int,
+    ) -> ExecutionResult:
+        """Handle execution failure with consistent logging and status updates.
+
+        Args:
+            project_name: Name of the project for logging
+            error_msg: Error message to log
+            log_path: Path to write error log
+            shell_args: Command that was executed
+            stdin_content: Heredoc content if any
+            status_display: Status display to update (may be None)
+            exit_code: Exit code to return
+
+        Returns:
+            ExecutionResult with failure status
+        """
+        project_logger = get_project_logger(project_name)
+        project_logger.error(error_msg)
+
+        self._write_error_to_log(log_path, error_msg, shell_args, stdin_content)
+
+        if status_display:
+            try:
+                status_display.complete_project(
+                    project_name,
+                    success=False,
+                    message=error_msg[:100],  # Truncate for display
+                )
+            except Exception:
+                pass
+
+        return ExecutionResult(
+            success=False,
+            error_lines=[error_msg],
+            exit_code=exit_code,
+        )
 
     def execute(
         self,
-        project_context: ProjectContext,
+        runtime: ProjectRuntime,
+        global_config: GlobalConfiguration,
+        operation_paths: OperationPaths,
         tcl_mode: str,
         step_patterns: list[StepPattern],
         status_display=None,
         cores: int = 1,
+        extra_commands: Optional[list[str]] = None,
     ) -> ExecutionResult:
-        """
-        Execute Vivado for a project.
+        """Execute Vivado for a project.
 
         Args:
-            project_context: Project context with config and paths
+            runtime: Project runtime with configuration
+            global_config: Global configuration for executor lookup
+            operation_paths: Paths for this operation
             tcl_mode: TCL script mode (build, open, export, etc.)
             step_patterns: Patterns for parsing output
             status_display: Optional status display for updates
             cores: Number of CPU cores to use
+            extra_commands: Additional commands to run before Vivado (e.g., hdldepends)
 
         Returns:
             ExecutionResult with success status and errors
         """
-        project_logger = get_project_logger(project_context.config.name)
+        project_logger = get_project_logger(runtime.project_name)
 
-        # Construct the command
-        command = self._construct_command(project_context, tcl_mode, cores)
+        # Get Vivado executor configuration
+        executor = runtime.config.get_vivado_executor(global_config)
 
-        # Create output parser
-        parser = VivadoOutputParser(step_patterns)
-
-        # Setup output processor
-        log_path = project_context.operation_paths.get_log_file(tcl_mode)
-        processor = VivadoOutputProcessor(
-            project_name=project_context.config.name,
-            operation=tcl_mode,
-            parser=parser,
-            status_display=status_display,
-            log_file_path=log_path,
-        )
-
-        # Execute process
-        project_logger.info(f"Executing Vivado: {' '.join(command)}")
-
-        try:
-            process = subprocess.Popen(
-                command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1,
-                cwd=project_context.operation_paths.operation_dir,
-                env=self._construct_environment(project_context),
-            )
-
-            # Process output
-            success, error_lines = processor.process_output(process)
-
-            return ExecutionResult(
-                success=success, error_lines=error_lines, exit_code=process.returncode
-            )
-
-        except Exception as e:
-            project_logger.error(f"Vivado execution failed: {e}")
-            return ExecutionResult(success=False, error_lines=[str(e)], exit_code=-1)
-
-    def execute_gui(self, project_path: Path, vivado_version) -> bool:
-        """
-        Open Vivado GUI with existing project.
-
-        Args:
-            project_path: Path to .xpr file
-            vivado_version: VivadoVersion object
-
-        Returns:
-            True if successful
-        """
-        try:
-            settings = str(vivado_version.settings_path)
-            shell_cmd = f"source {settings} && vivado -mode gui -notrace {project_path}"
-
-            process = subprocess.Popen(
-                ["/bin/bash", "-c", shell_cmd],
-                cwd=project_path.parent,
-                env=os.environ.copy(),
-            )
-
-            exit_code = process.wait()
-            return exit_code == 0
-
-        except Exception as e:
-            logger.error(f"Failed to open GUI: {e}")
-            return False
-
-    def _construct_command(
-        self, project_context: ProjectContext, tcl_mode: str, cores: int
-    ) -> list[str]:
-        """Build Vivado command"""
-        # Get TCL script
+        # Build the vivado arguments
         tcl_script = get_tcl_script("project_workflow.tcl")
+        tcl_args = runtime.get_tcl_arguments(tcl_mode, operation_paths, cores)
 
-        # Get TCL arguments
-        tcl_args = project_context.config.get_tcl_arguments(
-            mode=tcl_mode, operation_paths=project_context.operation_paths, cores=cores
-        )
-
-        # Build command
-        return [
-            "vivado",
+        vivado_args = [
             "-mode",
             "batch",
             "-notrace",
@@ -143,23 +151,257 @@ class VivadoExecutor:
             *tcl_args,
         ]
 
-    def _construct_environment(self, project_context: ProjectContext) -> dict:
-        """Construct the environment with Vivado settings sourced"""
-        env = os.environ.copy()
-
-        # Source Vivado settings
-        settings = project_context.config.vivado_version.settings_path
-        result = subprocess.run(
-            ["/bin/bash", "-c", f"source {settings} && env"],
-            capture_output=True,
-            text=True,
-            check=True,
+        # Build the complete command (handles heredoc vs && chaining)
+        shell_args, stdin_content = executor.build_command(
+            executable_args=vivado_args,
+            extra_commands=extra_commands,
         )
 
-        # Parse environment
-        for line in result.stdout.split("\n"):
-            if "=" in line:
-                key, value = line.split("=", 1)
-                env[key] = value
+        # Create output parser
+        parser = VivadoOutputParser(step_patterns)
 
-        return env
+        # Setup output processor
+        log_path = operation_paths.get_log_file(tcl_mode)
+        processor = VivadoOutputProcessor(
+            project_name=runtime.project_name,
+            operation=tcl_mode,
+            parser=parser,
+            status_display=status_display,
+            log_file_path=log_path,
+        )
+
+        # Log what we're executing
+        if stdin_content:
+            project_logger.info(f"Executing via heredoc: {' '.join(shell_args)}")
+            project_logger.debug(f"Script content:\n{stdin_content}")
+        else:
+            project_logger.info(f"Executing: {' '.join(shell_args)}")
+
+        try:
+            popen_args = self._prepare_popen_args(shell_args, stdin_content)
+
+            process = subprocess.Popen(
+                popen_args,
+                stdin=subprocess.PIPE if stdin_content else None,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+                cwd=operation_paths.operation_dir,
+                env=os.environ.copy(),
+            )
+
+            # If heredoc mode, write script to stdin
+            if stdin_content:
+                process.stdin.write(stdin_content)
+                process.stdin.close()
+
+            # Process output - this handles streaming and logging
+            success, error_lines = processor.process_output(process)
+
+            # Wait for process to complete and get exit code
+            process.wait()
+
+            # Check if process failed but processor didn't detect it
+            if process.returncode != 0 and success:
+                success = False
+                if not error_lines:
+                    try:
+                        stderr_output = process.stderr.read()
+                        if stderr_output:
+                            error_lines = stderr_output.strip().splitlines()
+                    except Exception:
+                        pass
+                if not error_lines:
+                    error_lines = [f"Process exited with code {process.returncode}"]
+
+                # Handle the undetected failure
+                self._write_error_to_log(
+                    log_path, "\n".join(error_lines), shell_args, stdin_content
+                )
+                if status_display:
+                    try:
+                        status_display.complete_project(
+                            runtime.project_name,
+                            success=False,
+                            message=error_lines[0] if error_lines else "Unknown error",
+                        )
+                    except Exception:
+                        pass
+
+            return ExecutionResult(
+                success=success,
+                error_lines=error_lines,
+                exit_code=process.returncode,
+            )
+
+        except FileNotFoundError as e:
+            return self._handle_execution_failure(
+                project_name=runtime.project_name,
+                error_msg=f"Command not found: {e.filename}",
+                log_path=log_path,
+                shell_args=shell_args,
+                stdin_content=stdin_content,
+                status_display=status_display,
+                exit_code=127,
+            )
+
+        except Exception as e:
+            return self._handle_execution_failure(
+                project_name=runtime.project_name,
+                error_msg=f"Vivado execution failed: {e}",
+                log_path=log_path,
+                shell_args=shell_args,
+                stdin_content=stdin_content,
+                status_display=status_display,
+                exit_code=-1,
+            )
+
+    def _write_error_to_log(
+        self,
+        log_path: Path,
+        error_msg: str,
+        shell_args: list[str],
+        stdin_content: Optional[str],
+    ) -> None:
+        """Write error information to log file for debugging.
+
+        Appends to existing log or creates new one if it doesn't exist.
+        """
+        try:
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            mode = "a" if log_path.exists() else "w"
+
+            with open(log_path, mode) as f:
+                f.write("\n" + "=" * 60 + "\n")
+                f.write("EXECUTION FAILED\n")
+                f.write("=" * 60 + "\n\n")
+                f.write(f"Error: {error_msg}\n\n")
+                f.write(f"Command: {' '.join(shell_args)}\n\n")
+
+                if stdin_content:
+                    f.write("Script content:\n")
+                    f.write("-" * 40 + "\n")
+                    f.write(stdin_content)
+                    f.write("\n" + "-" * 40 + "\n")
+        except Exception as e:
+            logger.warning(f"Failed to write error log: {e}")
+
+    def execute_gui(
+        self,
+        runtime: ProjectRuntime,
+        global_config: GlobalConfiguration,
+        project_path: Path,
+    ) -> bool:
+        """Open Vivado GUI with existing project.
+
+        Args:
+            runtime: Project runtime with configuration
+            global_config: Global configuration for executor lookup
+            project_path: Path to .xpr file
+
+        Returns:
+            True if successful
+        """
+        try:
+            executor = runtime.config.get_vivado_executor(global_config)
+
+            vivado_args = ["-mode", "gui", "-notrace", str(project_path)]
+            shell_args, stdin_content = executor.build_command(
+                executable_args=vivado_args
+            )
+
+            logger.info(f"Opening Vivado GUI: {' '.join(shell_args)}")
+            popen_args = self._prepare_popen_args(shell_args, stdin_content)
+
+            process = subprocess.Popen(
+                popen_args,
+                stdin=subprocess.PIPE if stdin_content else None,
+                cwd=project_path.parent,
+                env=os.environ.copy(),
+            )
+
+            if stdin_content:
+                process.stdin.write(stdin_content)
+                process.stdin.close()
+
+            return process.wait() == 0
+
+        except FileNotFoundError as e:
+            logger.error(f"Command not found: {e.filename}")
+            return False
+
+        except Exception as e:
+            logger.error(f"Failed to open GUI: {e}")
+            return False
+
+    def execute_batch_command(
+        self,
+        runtime: ProjectRuntime,
+        global_config: GlobalConfiguration,
+        tcl_commands: list[str],
+        working_dir: Path,
+    ) -> ExecutionResult:
+        """Execute arbitrary TCL commands in batch mode.
+
+        Args:
+            runtime: Project runtime with configuration
+            global_config: Global configuration for executor lookup
+            tcl_commands: List of TCL commands to execute
+            working_dir: Working directory for execution
+
+        Returns:
+            ExecutionResult with success status
+        """
+        executor = runtime.config.get_vivado_executor(global_config)
+        tcl_string = "; ".join(tcl_commands)
+
+        vivado_args = [
+            "-mode",
+            "batch",
+            "-notrace",
+            "-nojournal",
+            "-nolog",
+            "-tclargs",
+            tcl_string,
+        ]
+
+        shell_args, stdin_content = executor.build_command(executable_args=vivado_args)
+
+        try:
+            popen_args = self._prepare_popen_args(shell_args, stdin_content)
+
+            process = subprocess.Popen(
+                popen_args,
+                stdin=subprocess.PIPE if stdin_content else None,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=working_dir,
+                env=os.environ.copy(),
+            )
+
+            if stdin_content:
+                stdout, stderr = process.communicate(input=stdin_content)
+            else:
+                stdout, stderr = process.communicate()
+
+            return ExecutionResult(
+                success=process.returncode == 0,
+                error_lines=stderr.splitlines() if stderr else [],
+                exit_code=process.returncode,
+            )
+
+        except FileNotFoundError as e:
+            return ExecutionResult(
+                success=False,
+                error_lines=[f"Command not found: {e.filename}"],
+                exit_code=127,
+            )
+
+        except Exception as e:
+            return ExecutionResult(
+                success=False,
+                error_lines=[str(e)],
+                exit_code=-1,
+            )

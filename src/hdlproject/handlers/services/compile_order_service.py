@@ -1,64 +1,177 @@
-# handlers/services/compile_order_service.py
-"""Service for compile order generation"""
+"""Service for compile order generation.
+
+This module provides a service for generating compile order files
+using hdldepends. Supports both local execution and returning command
+strings for Docker-based setups.
+"""
 
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
-from hdlproject.core.compile_order import CompileOrderManager
-from hdlproject.handlers.base.context import ProjectContext
+if TYPE_CHECKING:
+    from hdlproject.core.compile_order import CompileOrderManager
+    from hdlproject.runtime.context import ProjectRuntime, OperationPaths
+
 from hdlproject.utils.logging_manager import get_logger, get_project_logger
 
 logger = get_logger(__name__)
 
 
 class CompileOrderService:
-    """Handles compile order generation for operations that need it"""
+    """Service for compile order generation.
 
-    def __init__(self, compile_manager: Optional[CompileOrderManager]):
-        """
-        Initialise service.
+    Handles compile order generation for operations that need it.
+    Supports both direct execution (local setups) and command generation
+    (Docker setups where hdldepends runs in the container).
+    """
+
+    def __init__(
+        self,
+        compile_manager: Optional["CompileOrderManager"],
+        runtime: Optional["ProjectRuntime"],
+    ):
+        """Initialise the service.
 
         Args:
             compile_manager: CompileOrderManager instance or None if not available
+            runtime: ProjectRuntime for accessing config (or None)
         """
         self.manager = compile_manager
+        self.runtime = runtime
 
-    def generate_for_project(self, project_context: ProjectContext) -> Optional[Path]:
+    def is_available(self) -> bool:
+        """Check if compile order generation is available."""
+        return self.manager is not None and self.runtime is not None
+
+    def requires_shell_execution(self) -> bool:
+        """Check if hdldepends must run in the executor's shell context.
+
+        Returns True for Docker/custom shell setups where we can't capture
+        environment variables locally.
         """
-        Generate compile order for a project if manager is available.
+        if not self.runtime or not self.runtime._global_config:
+            return False
+
+        try:
+            executor = self.runtime.get_vivado_executor()
+            return executor.shell is not None
+        except ValueError:
+            return False
+
+    def prepare_for_operation(self, operation_paths: "OperationPaths") -> None:
+        """Prepare compile order for an operation.
+
+        For local setups: generates compile order immediately.
+        For Docker setups: logs that it will be done in shell context.
 
         Args:
-            project_context: Project context with config and paths
+            operation_paths: Paths for this operation
+        """
+        if not self.is_available():
+            logger.debug("Compile order service not available")
+            return
+
+        project_logger = get_project_logger(self.runtime.project_name)
+
+        if self.requires_shell_execution():
+            project_logger.debug(
+                "Compile order will be generated in shell context (Docker setup)"
+            )
+        else:
+            self.generate(operation_paths)
+
+    def get_extra_commands(
+        self, operation_paths: "OperationPaths"
+    ) -> Optional[list[str]]:
+        """Get extra commands to inject into shell execution.
+
+        Returns hdldepends command for Docker setups, None otherwise.
+
+        Args:
+            operation_paths: Paths for this operation
+
+        Returns:
+            List with hdldepends command, or None
+        """
+        if not self.is_available() or not self.requires_shell_execution():
+            return None
+
+        hdldepends_cmd = self.get_command(operation_paths)
+        if hdldepends_cmd:
+            project_logger = get_project_logger(self.runtime.project_name)
+            project_logger.debug(f"Adding hdldepends to shell: {hdldepends_cmd}")
+            return [hdldepends_cmd]
+
+        return None
+
+    def get_command(self, operation_paths: "OperationPaths") -> Optional[str]:
+        """Get the hdldepends command string.
+
+        Use this when hdldepends needs to run in the same shell context
+        as Vivado (e.g., Docker containers).
+
+        Args:
+            operation_paths: Paths for this operation
+
+        Returns:
+            Command string for hdldepends, or None if not available
+        """
+        if not self.is_available():
+            return None
+
+        output_file = (
+            operation_paths.operation_dir
+            / f"compile_order.{self.manager.output_format}"
+        )
+
+        return self.manager.get_command(
+            top_level_file=str(self.runtime.top_level_file_path),
+            output_file=output_file,
+            vivado_version=self.runtime.vivado_version,
+            device_part=self.runtime.device_part,
+        )
+
+    def generate(self, operation_paths: "OperationPaths") -> Optional[Path]:
+        """Generate compile order for the project (local execution).
+
+        This executes hdldepends directly in a subprocess with environment
+        variables captured from the Vivado setup commands. Only works for
+        local setups (no custom shell).
+
+        For Docker setups, use get_command() and pass it to the executor.
+
+        Args:
+            operation_paths: Paths for this operation
 
         Returns:
             Path to generated compile order file, or None if not generated
         """
         if not self.is_available():
-            logger.debug("Compile order generation not available")
             return None
 
-        project_logger = get_project_logger(project_context.config.name)
+        if self.requires_shell_execution():
+            logger.debug("Compile order requires shell execution - use get_command()")
+            return None
+
+        project_logger = get_project_logger(self.runtime.project_name)
 
         try:
-            # Extract vivado version and device part from config
-            vivado_version = project_context.config.vivado_version.full_version
-            device_part = project_context.config.device_part
+            vivado_version = self.runtime.vivado_version
+            device_part = self.runtime.device_part
 
             project_logger.debug(
                 f"Generating compile order with Vivado {vivado_version} "
                 f"and device {device_part}"
             )
 
-            # Get Vivado environment (sources settings64.sh)
-            env = self._get_vivado_environment(project_context.config.vivado_version)
+            env = self._get_vivado_environment()
 
-            # Generate compile order
             compile_order_path = self.manager.generate(
-                root_dir=project_context.config.repository_root,
-                top_level_file=str(project_context.config.top_level_file_path),
-                working_dir=project_context.operation_paths.operation_dir,
+                root_dir=self.runtime.repository_root,
+                top_level_file=str(self.runtime.top_level_file_path),
+                working_dir=operation_paths.operation_dir,
                 vivado_version=vivado_version,
                 device_part=device_part,
                 env=env,
@@ -66,58 +179,47 @@ class CompileOrderService:
 
             if compile_order_path:
                 project_logger.info(f"Generated compile order: {compile_order_path}")
+                self.runtime.compile_order_path = compile_order_path
                 return compile_order_path
-            else:
-                project_logger.info(
-                    "Compile order not generated (no hdldepends config)"
-                )
-                return None
+
+            return None
 
         except Exception as e:
             project_logger.warning(f"Compile order generation failed: {e}")
             return None
 
-    def is_available(self) -> bool:
-        """Check if compile order generation is available"""
-        return self.manager is not None
+    def _get_vivado_environment(self) -> dict:
+        """Get environment with Vivado settings.
 
-    def _get_vivado_environment(self, vivado_version) -> dict:
-        """
-        Construct environment with Vivado settings sourced.
-
-        This is the same logic used by VivadoExecutor._construct_environment()
-
-        Args:
-            vivado_version: VivadoVersion object with settings_path
-
-        Returns:
-            Dictionary of environment variables with Vivado settings sourced
+        Note: Only called from generate() which already verified is_available().
         """
         env = os.environ.copy()
 
-        # Source Vivado settings
-        settings = vivado_version.settings_path
-        logger.debug(f"Sourcing Vivado settings from: {settings}")
+        try:
+            executor = self.runtime.get_vivado_executor()
+        except ValueError:
+            return env
+
+        env_command = executor.get_environment_command()
+        if not env_command:
+            return env
 
         try:
             result = subprocess.run(
-                ["/bin/bash", "-c", f"source {settings} && env"],
+                ["/bin/bash", "-c", env_command],
                 capture_output=True,
                 text=True,
                 check=True,
             )
 
-            # Parse environment
             for line in result.stdout.split("\n"):
                 if "=" in line:
                     key, value = line.split("=", 1)
                     env[key] = value
 
-            logger.debug("Successfully sourced Vivado environment")
+            logger.debug("Successfully set up Vivado environment")
 
         except subprocess.CalledProcessError as e:
-            logger.warning(f"Failed to source Vivado settings: {e}")
-            # Return original environment if sourcing fails
-            return os.environ.copy()
+            logger.warning(f"Failed to set up Vivado environment: {e}")
 
         return env

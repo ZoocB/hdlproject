@@ -1,44 +1,78 @@
-# config/config_resolver.py
-"""Configuration resolver with YAML support and inheritance"""
+"""YAML configuration loading with inheritance support.
+
+This module handles only the YAML loading and inheritance processing.
+Pydantic validation is done by the ConfigLoader after inheritance is resolved.
+"""
+
+from pathlib import Path
+from typing import Any, Set
+from copy import deepcopy
 
 import yaml
-import subprocess
-from pathlib import Path
-from typing import Any, Set, Optional
-from copy import deepcopy
-import os
 
-from hdlproject.models.models import ProjectConfiguration
 from hdlproject.utils.logging_manager import get_logger
 
 logger = get_logger(__name__)
 
 
 class YAMLConfigLoader:
-    """YAML configuration loader with inheritance support"""
+    """YAML configuration loader with inheritance support.
+
+    Processes the 'inherits' key to merge parent configurations before
+    returning the raw dict for Pydantic validation.
+    """
 
     def load_with_inheritance(self, config_path: Path) -> dict[str, Any]:
-        """Load configuration with inheritance processing"""
+        """Load configuration with inheritance processing.
+
+        Args:
+            config_path: Path to the YAML configuration file
+
+        Returns:
+            Merged configuration dict with inheritance resolved
+
+        Raises:
+            ValueError: If file is not YAML
+            FileNotFoundError: If config file or parent doesn't exist
+            RuntimeError: If circular dependency detected
+        """
         return self._load_recursive(config_path, set())
 
-    def _load_recursive(self, config_path: Path, visited: Set[str]) -> dict[str, Any]:
-        """Recursively load configuration with inheritance"""
+    def _load_recursive(
+        self,
+        config_path: Path,
+        visited: Set[str],
+    ) -> dict[str, Any]:
+        """Recursively load configuration with inheritance.
+
+        Args:
+            config_path: Path to configuration file
+            visited: Set of already-visited paths (for cycle detection)
+
+        Returns:
+            Merged configuration dict
+        """
         # Check for circular dependencies
         abs_path = str(config_path.absolute())
         if abs_path in visited:
             raise RuntimeError(f"Circular dependency detected: {abs_path}")
         visited.add(abs_path)
 
-        # Load file
+        # Validate file extension
         if config_path.suffix not in [".yaml", ".yml"]:
-            raise ValueError(f"Only YAML configuration files are supported. Found: {config_path}")
+            raise ValueError(
+                f"Only YAML configuration files are supported. Found: {config_path}"
+            )
 
+        # Load file
         try:
             with open(config_path) as f:
                 data = yaml.safe_load(f) or {}
-        except Exception as e:
-            logger.error(f"Failed to load YAML file {config_path}: {e}")
-            raise RuntimeError(f"Failed to load YAML file: {e}")
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        except yaml.YAMLError as e:
+            logger.error(f"Failed to parse YAML file {config_path}: {e}")
+            raise ValueError(f"Invalid YAML in {config_path}: {e}")
 
         # Process inheritance
         if "inherits" in data:
@@ -53,7 +87,10 @@ class YAMLConfigLoader:
             for parent_file in inherits:
                 parent_path = (config_path.parent / parent_file).resolve()
                 if not parent_path.exists():
-                    raise FileNotFoundError(f"Parent configuration not found: {parent_path}")
+                    raise FileNotFoundError(
+                        f"Parent configuration not found: {parent_path}\n"
+                        f"  Referenced from: {config_path}"
+                    )
                 parent_data = self._load_recursive(parent_path, visited.copy())
                 result = self._merge_configs(result, parent_data)
 
@@ -62,20 +99,29 @@ class YAMLConfigLoader:
 
         return data
 
-    def _merge_configs(self, base: dict[str, Any], override: dict[str, Any], path: str = "") -> dict[str, Any]:
-        """
-        Deep merge configurations with smart handling:
-        - Lists: append (combine in order)
-        - Dicts: recursive merge
-        - Scalars: ERROR if defined in both parent and child (duplicate definition)
+    def _merge_configs(
+        self,
+        base: dict[str, Any],
+        override: dict[str, Any],
+        path: str = "",
+    ) -> dict[str, Any]:
+        """Deep merge configurations with smart handling.
+
+        Merge behavior:
+        - Lists: Append (parent items first, then child items)
+        - Dicts: Recursive merge
+        - Scalars: ERROR if defined in both parent and child
 
         Args:
             base: Parent configuration dict
             override: Child configuration dict
-            path: Current path in the config tree (for error messages)
+            path: Current path in config tree (for error messages)
+
+        Returns:
+            Merged configuration dict
 
         Raises:
-            ValueError: If a scalar value is defined in both parent and child
+            ValueError: If scalar value defined in both parent and child
         """
         result = deepcopy(base)
 
@@ -83,13 +129,13 @@ class YAMLConfigLoader:
             current_path = f"{path}.{key}" if path else key
 
             if key in result:
-                # If both are lists, append them
+                # Both are lists: append
                 if isinstance(result[key], list) and isinstance(value, list):
                     result[key] = result[key] + deepcopy(value)
-                # If both are dicts, recursively merge them
+                # Both are dicts: recursive merge
                 elif isinstance(result[key], dict) and isinstance(value, dict):
                     result[key] = self._merge_configs(result[key], value, current_path)
-                # Scalar or type mismatch - this is a duplicate definition error
+                # Scalar or type mismatch: error
                 else:
                     raise ValueError(
                         f"Duplicate definition of '{current_path}' found in inheritance chain. "
@@ -101,90 +147,3 @@ class YAMLConfigLoader:
                 result[key] = deepcopy(value)
 
         return result
-
-
-class ConfigResolver:
-    """Configuration resolver - simplified without complex error handling"""
-
-    def __init__(self, base_dir: Path):
-        """Initialise resolver"""
-        self.base_dir = base_dir
-        self.yaml_loader = YAMLConfigLoader()
-
-    def resolve_config(self, config_path: Path, output_dir: Optional[Path] = None) -> ProjectConfiguration:
-        """
-        Resolve YAML configuration with inheritance and return Pydantic model
-
-        Args:
-            config_path: Path to YAML configuration file
-            output_dir: Optional directory to save resolved configuration
-
-        Returns:
-            ProjectConfiguration: Validated Pydantic model
-        """
-        logger.info(f"Resolving configuration: {config_path}")
-
-        # Ensure we have a YAML file
-        if config_path.suffix not in [".yaml", ".yml"]:
-            raise ValueError(f"Only YAML configuration files are supported. " f"Got: {config_path.name}")
-
-        if not config_path.exists():
-            raise FileNotFoundError(f"Configuration file not found: {config_path}")
-
-        # Load configuration with inheritance
-        resolved_dict = self.yaml_loader.load_with_inheritance(config_path)
-
-        # Execute environment setup if specified
-        if "environment_setup" in resolved_dict:
-            self._execute_environment_setup(resolved_dict["environment_setup"], config_path.parent)
-
-        # Create and validate Pydantic model
-        try:
-            config = ProjectConfiguration(**resolved_dict)
-            logger.info("Configuration validated successfully")
-        except Exception as e:
-            logger.error(f"Configuration validation failed: {e}")
-            raise ValueError(f"Invalid configuration: {e}")
-
-        # Save resolved configuration if requested
-        if output_dir:
-            self._save_resolved_config(config, resolved_dict, output_dir)
-
-        return config
-
-    def _execute_environment_setup(self, setup_config: dict[str, str], base_dir: Path) -> None:
-        """Execute environment setup scripts"""
-        logger.info("Executing environment setup scripts...")
-
-        for executor, script_path in setup_config.items():
-            script_full_path = (base_dir / script_path).resolve()
-
-            if not script_full_path.exists():
-                logger.warning(f"Setup script not found: {script_full_path}")
-                continue
-
-            logger.info(f"Running: {executor} {script_full_path}")
-
-            try:
-                # Run script and capture output
-                result = subprocess.run([executor, str(script_full_path)], capture_output=True, text=True, cwd=base_dir, check=True)
-
-                # Parse KEY=VALUE from output
-                for line in result.stdout.splitlines():
-                    if "=" in line and not line.strip().startswith("#"):
-                        key, value = line.split("=", 1)
-                        os.environ[key.strip()] = value.strip()
-
-            except subprocess.CalledProcessError as e:
-                logger.error(f"Setup script failed: {e.stderr}")
-                raise RuntimeError(f"Environment setup failed: {script_path}")
-
-    def _save_resolved_config(self, config: ProjectConfiguration, raw_dict: dict[str, Any], output_dir: Path) -> None:
-        """Save resolved configuration as JSON for TCL scripts"""
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Save as JSON for TCL scripts
-        json_path = output_dir / "hdlproject_config_resolved.json"
-        with open(json_path, "w") as f:
-            f.write(config.to_json(indent=2))
-        logger.info(f"Saved resolved configuration: {json_path}")

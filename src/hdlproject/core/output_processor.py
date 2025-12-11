@@ -120,8 +120,8 @@ class VivadoOutputProcessor:
             stdout_thread.join()
             stderr_thread.join()
 
-        # Finalize any incomplete Vivado step (step started but never completed)
-        self._finalize_incomplete_step(exit_code != 0)
+        # finalise any incomplete Vivado step (step started but never completed)
+        self._finalise_incomplete_step(exit_code != 0)
 
         # Determine success - TCL step errors, Vivado errors, timing failure,
         # or non-zero exit code cause failure
@@ -187,7 +187,7 @@ class VivadoOutputProcessor:
 
         return success, error_lines
 
-    def _finalize_incomplete_step(self, process_failed: bool) -> None:
+    def _finalise_incomplete_step(self, process_failed: bool) -> None:
         """
         Finalise any incomplete Vivado step when process ends.
 

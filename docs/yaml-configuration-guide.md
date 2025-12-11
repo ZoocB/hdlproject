@@ -4,26 +4,14 @@ This document describes the structure and options for HDL project configuration 
 
 *Auto-generated from Pydantic models. Do not edit manually.*
 
-## Contents
+## Configuration Files
 
-1. [Overview](#overview)
-2. [Inheritance](#inheritance)
-3. [Environment Variables](#environment-variables)
-4. [Configuration Reference](#configuration-reference)
-   - [ProjectConfiguration](#projectconfiguration)
-   - [ProjectInformation](#projectinformation)
-   - [DeviceInfo](#deviceinfo)
-   - [Generic](#generic)
-   - [Constraint](#constraint)
-   - [BlockDesign](#blockdesign)
-5. [Vivado Property Mapping](#vivado-property-mapping)
+There are two types of configuration files:
 
-## Overview
+- **Global Configuration** (`hdlproject_global_config.yaml`): Located at repository root, defines repository-wide settings
+- **Project Configuration** (`hdlproject_project_config.yaml`): Located in each project directory, defines project-specific settings
 
-Configuration files use YAML format and define all settings for an HDL project,
-including device targeting, source files, constraints, and synthesis/implementation options.
-
-The root element is `ProjectConfiguration`, which contains all other configuration sections.
+Project-level settings override global settings where noted.
 
 ## Inheritance
 
@@ -45,115 +33,424 @@ inherits:
 | Dicts | Recursively merged |
 | Scalars | Error if defined in both parent and child |
 
-The `inherits` key is processed before validation and removed from the final configuration.
+## Contents
 
-## Environment Variables
-
-All string values support environment variable substitution using `${VAR}` syntax:
-
-```yaml
-project_information:
-  project_name: ${PROJECT_PREFIX}_design
-  top_level_file_name: ${TOP_MODULE}.vhd
-```
-
-Variables are expanded at configuration load time. If a variable is not set,
-the placeholder remains unchanged.
-
-Environment variables can also be set via `environment_setup` scripts (see below).
+- [Configuration Files](#configuration-files)
+- [Inheritance](#inheritance)
+- [Configuration Reference](#configuration-reference)
+  - [BlockDesign](#blockdesign)
+  - [WriteHwPlatformOptions](#writehwplatformoptions)
+  - [BuildConfiguration](#buildconfiguration)
+  - [Constraint](#constraint)
+  - [DeviceInfo](#deviceinfo)
+  - [Generic](#generic)
+  - [ShellConfig](#shellconfig)
+  - [VivadoExecutor](#vivadoexecutor)
+  - [GlobalConfiguration](#globalconfiguration)
+  - [VivadoVersion](#vivadoversion)
+  - [ProjectInformation](#projectinformation)
+  - [ProjectConfiguration](#projectconfiguration)
+- [Complete Examples](#complete-examples)
 
 ## Configuration Reference
-
-### ProjectConfiguration
-
-Root configuration model for HDL projects.
-
-    This is the top-level model that represents a complete project configuration file.
-    Supports inheritance via the 'inherits' key (processed before model validation).
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `project_information` | [ProjectInformation](#projectinformation) | Yes | `—` | Core project identification and settings. Required. |
-| `hdldepends_config` | str | No | `null` | Path to hdldepends configuration file, relative to the project directory. Overrides default dependency resolution settings. |
-| `constraints` | list[[Constraint](#constraint)] | No | `[]` | List of constraint files to include in the project. |
-| `block_designs` | list[[BlockDesign](#blockdesign)] | No | `[]` | List of block designs to include in the project. |
-| `synth_options` | dict[str, str] | No | `{}` | Vivado synthesis options. Keys are property names (e.g., STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY), values are property values. Maps to set_property -name <key> -value <value>. |
-| `impl_options` | dict[str, str] | No | `{}` | Vivado implementation options. Keys are property names (e.g., STEPS.OPT_DESIGN.ARGS.DIRECTIVE), values are property values. Maps to set_property -name <key> -value <value>. |
-| `environment_setup` | dict[str, str] | No | `null` | Scripts to execute before processing. Keys are executors (e.g., bash, python), values are script paths relative to the config file. Script output lines in KEY=VALUE format are added to environment. |
-| `hdlproject_config_version` | str | No | `'3.0.0'` | Configuration schema version for compatibility checking. |
-
-### ProjectInformation
-
-Core project identification and settings.
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `project_name` | str | Yes | `—` | Name of the Vivado project. Used for project directory and output file naming. |
-| `top_level_file_name` | str | Yes | `—` | Filename of the top-level HDL module (without path). Must exist in the source file list. |
-| `device_info` | [DeviceInfo](#deviceinfo) | Yes | `—` | FPGA device and board configuration. |
-| `top_level_generics` | dict[str, [Generic](#generic)] | No | `{}` | Generic parameters to pass to the top-level module. Keys are generic names, values are Generic objects. |
-| `vivado_version_year` | str | No | `null` | Vivado version year. Overrides device_info.vivado_version_year if both are specified. |
-| `vivado_version_sub` | str | No | `null` | Vivado version sub-release. Overrides device_info.vivado_version_sub if both are specified. |
-
-### DeviceInfo
-
-FPGA device and board configuration.
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `part_name` | str | Yes | `—` | Xilinx FPGA part number. Must be a valid Xilinx part (e.g., xc7a35tcpg236-1, xczu9eg-ffvb1156-2-e). |
-| `board_name` | str | Yes | `—` | Human-readable board name for identification purposes. |
-| `board_part` | str | No | `null` | Xilinx board part identifier. Must be a valid Xilinx board part if specified (e.g., digilentinc.com:arty-a7-35:part0:1.1). |
-| `vivado_version_year` | str | No | `null` | Vivado version year (e.g., 2023). Can be specified here or at project level. |
-| `vivado_version_sub` | str | No | `null` | Vivado version sub-release (e.g., 1, 2). Can be specified here or at project level. |
-
-### Generic
-
-HDL generic/parameter definition for top-level module.
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `type` | str | Yes | `—` | VHDL type of the generic (e.g., integer, std_logic, std_logic_vector). |
-| `value` | str | int | float | bool | No | `null` | Value to assign to the generic. Type must be compatible with the declared type. |
-
-### Constraint
-
-Constraint file configuration.
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `file` | str | Yes | `—` | Path to the constraint file (.xdc), relative to the configuration file location. |
-| `fileset` | str | No | `null` | Target fileset for the constraint (e.g., constrs_1). Defaults to the project's main constraint fileset. |
-| `execution` | str | No | `null` | When the constraint should be applied: 'synthesis', 'implementation', or both if not specified. |
-| `properties` | list[dict[str, str]] | dict[str, str] | No | `null` | Additional Vivado properties to set on the constraint file. Can be a single dict or list of dicts with property name-value pairs. |
 
 ### BlockDesign
 
 Block design configuration.
 
+Example:
+```yaml
+block_designs:
+  - file: system.tcl
+  - file: processing_system.bd
+    commands:
+      - "regenerate_bd_layout"
+      - "validate_bd_design"
+```
+
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `file` | str | Yes | `—` | Path to the block design file (.tcl or .bd), relative to the configuration file location. |
-| `commands` | list[str] | No | `null` | Additional TCL commands to execute after loading the block design. |
+| `file` | str | Yes | `—` | Path to block design file (.tcl or .bd), relative to config file. |
+| `commands` | list[str] | No | `null` | Additional TCL commands to execute after loading. |
 
-## Vivado Property Mapping
+### WriteHwPlatformOptions
 
-The `synth_options` and `impl_options` fields map directly to Vivado `set_property` commands:
+Options for write_hw_platform Vivado command.
+
+Example:
+```yaml
+build_configuration:
+  write_hw_platform:
+    include_bit: true
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `include_bit` | bool | No | `False` | Include bitstream in hardware platform file (.xsa). |
+
+### BuildConfiguration
+
+Build-time configuration for synthesis and implementation.
+
+These are persistent options stored in the config, distinct from
+CLI runtime options like --cores or --clean.
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `write_hw_platform` | [WriteHwPlatformOptions](#writehwplatformoptions) | No | `WriteHwPlatformOptions(include_bit=False)` | Options for hardware platform file (.xsa) generation. |
+
+### Constraint
+
+Constraint file configuration.
+
+Example:
+```yaml
+constraints:
+  - file: timing.xdc
+  - file: pins.xdc
+    fileset: constrs_1
+  - file: debug.xdc
+    execution: implementation
+    properties:
+      USED_IN_SYNTHESIS: false
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `file` | str | Yes | `—` | Path to constraint file (.xdc), relative to config file. |
+| `fileset` | str | No | `null` | Target fileset (e.g., constrs_1). Defaults to main constraint fileset. |
+| `execution` | str | No | `null` | When applied: 'synthesis', 'implementation', or both if not specified. |
+| `properties` | list[dict[str, str]] | dict[str, str] | No | `null` | Additional Vivado properties for the constraint file. |
+
+### DeviceInfo
+
+FPGA device and board configuration.
+
+Example:
+```yaml
+device_info:
+  part_name: xc7z020clg400-1
+  board_name: Arty_Z7_20
+  board_part: digilentinc.com:arty-z7-20:part0:1.1
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `part_name` | str | Yes | `—` | Xilinx FPGA part number (e.g., xc7a35tcpg236-1). |
+| `board_name` | str | Yes | `—` | Human-readable board name for identification. |
+| `board_part` | str | No | `null` | Xilinx board part identifier (e.g., digilentinc.com:arty-a7-35:part0:1.1). |
+
+### Generic
+
+HDL generic/parameter for top-level module.
+
+Example:
+```yaml
+top_level_generics:
+  DATA_WIDTH:
+    type: integer
+    value: 32
+  ENABLE_DEBUG:
+    type: std_logic
+    value: '1'
+  INIT_VECTOR:
+    type: std_logic_vector
+    width: 8
+    value: "0xFF"
+    format: hex
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `type` | str | Yes | `—` | VHDL type (e.g., integer, std_logic, std_logic_vector). |
+| `value` | str | int | float | bool | No | `null` | Value to assign. Type must be compatible with declared type. |
+| `width` | int | No | `null` | Bit width for vector types. |
+| `format` | str | No | `null` | Value format hint ('hex', 'bin', 'dec'). |
+
+### ShellConfig
+
+Shell configuration for custom execution environments.
+
+Used when commands need to run in a custom shell (e.g., Docker container).
+When `heredoc` is true, commands are passed via stdin with `set -e` for
+error handling.
+
+Example:
+```yaml
+shell:
+  invoke: "docker_tool vivado-2023.2"
+  heredoc: true
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `invoke` | str | Yes | `—` | Command to start the shell (e.g., 'docker_tool vivado-2023.2') |
+| `heredoc` | bool | No | `False` | Use heredoc/stdin mode. Commands passed via stdin with 'set -e'. |
+
+### VivadoExecutor
+
+Configuration for executing a specific Vivado version.
+
+Defines how to execute Vivado and related tools (like hdldepends) for a
+specific version. Supports both local installations and containerized
+environments.
+
+The execution flow is: [shell] → [setup] → [injected commands] → [executable]
+
+Example:
+```yaml
+vivado_executors:
+  # Local installation
+  "2020.1":
+    setup:
+      - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"
+    executable: "vivado"
+
+  # Docker container with heredoc
+  "2023.2":
+    shell:
+      invoke: "docker_tool vivado-2023.2"
+      heredoc: true
+    setup:
+      - "source /opt/Xilinx/Vivado/2023.2/settings64.sh"
+    executable: "vivado"
+
+  # Local with extra environment setup
+  "2021.1":
+    setup:
+      - "source /tools/Xilinx/Vivado/2021.1/settings64.sh"
+      - "export XILINX_LOCAL_USER_DATA=no"
+    executable: "vivado"
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `executable` | str | Yes | `—` | Command to invoke the tool (e.g., 'vivado') |
+| `setup` | list[str] | No | `[]` | Setup commands to run first (e.g., source settings.sh). Executed before any injected commands like hdldepends. |
+| `shell` | [ShellConfig](#shellconfig) | No | `null` | Custom shell configuration. If not set, uses /bin/bash with && chaining. Use this for Docker or other containerized environments. |
+
+### GlobalConfiguration
+
+Global repository configuration (`hdlproject_global_config.yaml`).
+
+Located at repository root. Settings can be overridden at project level.
+
+Example:
+```yaml
+project_dir: "fw/prj"
+hdldepends_config: "hdldepends.json"
+default_cores: 2
+max_parallel_builds: 4
+compile_order_format: "json"
+
+vivado_executors:
+  "2020.1":
+    setup:
+      - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"
+    executable: "vivado"
+  "2023.2":
+    shell:
+      invoke: "docker_tool vivado-2023.2"
+      heredoc: true
+    setup:
+      - "source /opt/Xilinx/Vivado/2023.2/settings64.sh"
+    executable: "vivado"
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_dir` | str | Yes | `—` | Base directory containing project directories, relative to repository root. |
+| `hdldepends_config` | str | No | `null` | Default hdldepends config path, relative to repository root. Overridable per-project. |
+| `vivado_executors` | dict[str, [VivadoExecutor](#vivadoexecutor)] | No | `{}` | Vivado execution configs keyed by version (e.g., '2020.1'). Overridable per-project. |
+| `default_cores` | int | No | `2` | Default CPU cores per project for synthesis/implementation. |
+| `max_parallel_builds` | int | No | `null` | Maximum parallel builds. If None, calculated from system resources. |
+| `compile_order_format` | str | No | `'json'` | Output format for compile order files ('json' or 'tcl'). |
+
+### VivadoVersion
+
+Vivado version specification.
+
+Example:
+```yaml
+vivado_version:
+  year: "2020"
+  minor: "1"
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `year` | str | Yes | `—` | Vivado version year (e.g., '2020', '2023'). |
+| `minor` | str | Yes | `—` | Vivado version minor release (e.g., '1', '2'). |
+
+### ProjectInformation
+
+Core project identification and settings.
+
+Example:
+```yaml
+project_information:
+  project_name: my_project
+  top_level_file_name: top_level
+  device_info:
+    part_name: xc7z020clg400-1
+    board_name: Arty_Z7_20
+  vivado_version:
+    year: "2020"
+    minor: "1"
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_name` | str | Yes | `—` | Vivado project name. Used for .xpr file and output naming. |
+| `top_level_file_name` | str | Yes | `—` | Top-level HDL module filename (without path or extension). |
+| `device_info` | [DeviceInfo](#deviceinfo) | Yes | `—` | FPGA device and board configuration. |
+| `vivado_version` | [VivadoVersion](#vivadoversion) | Yes | `—` | Vivado version to use for this project. |
+| `top_level_generics` | dict[str, [Generic](#generic)] | No | `{}` | Generic parameters for top-level module. Keys are generic names. |
+
+### ProjectConfiguration
+
+Root project configuration (`hdlproject_project_config.yaml`).
+
+Located in each project directory. This is the top-level model representing
+a complete project configuration file.
+
+Example for `synth_options` and `impl_options` - these map directly to
+Vivado `set_property` commands:
 
 ```yaml
 synth_options:
-  "STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY": "rebuilt"
-  "STEPS.SYNTH_DESIGN.ARGS.MORE OPTIONS": "-mode out_of_context"
+  STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY: rebuilt
+  STEPS.SYNTH_DESIGN.ARGS.DIRECTIVE: AreaOptimized_high
 
 impl_options:
-  "STEPS.OPT_DESIGN.ARGS.DIRECTIVE": "Explore"
-  "STEPS.PLACE_DESIGN.ARGS.DIRECTIVE": "ExtraNetDelay_high"
+  STEPS.OPT_DESIGN.ARGS.DIRECTIVE: Explore
+  STEPS.PLACE_DESIGN.ARGS.DIRECTIVE: ExtraNetDelay_high
 ```
 
-Each entry generates a TCL command:
-
+Each generates TCL like:
 ```tcl
 set_property -name STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY -value rebuilt -objects [get_runs synth_1]
 ```
 
-Refer to Vivado documentation for available property names and values.
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_information` | [ProjectInformation](#projectinformation) | Yes | `—` | Core project identification and settings. |
+| `hdldepends_config` | str | No | `null` | Project-specific hdldepends config path. Overrides global setting. |
+| `vivado_executors` | dict[str, [VivadoExecutor](#vivadoexecutor)] | No | `null` | Project-specific Vivado executors. Overrides global settings. |
+| `constraints` | list[[Constraint](#constraint)] | No | `[]` | Constraint files to include. |
+| `block_designs` | list[[BlockDesign](#blockdesign)] | No | `[]` | Block designs to include. |
+| `synth_options` | dict[str, str] | No | `{}` | Vivado synthesis properties (STEPS.SYNTH_DESIGN.ARGS.*). |
+| `impl_options` | dict[str, str] | No | `{}` | Vivado implementation properties (STEPS.*.ARGS.*). |
+| `build_configuration` | [BuildConfiguration](#buildconfiguration) | No | `BuildConfiguration(write_hw_platform=WriteHwPlatformOptions(include_bit=False))` | Build-time configuration options. |
+| `environment_setup` | dict[str, str] | No | `null` | Pre-processing scripts. Keys: executor, Values: script path. Output KEY=VALUE lines added to env. |
+| `hdlproject_config_version` | str | No | `'4.0.0'` | Configuration schema version. |
+
+## Complete Examples
+
+Auto-generated examples showing all fields with dummy values.
+
+### Global Configuration Example
+
+```yaml
+project_dir: "my_project_dir_0"
+hdldepends_config: "my_hdldepends_config_0"
+vivado_executors:
+  my_vivado_executors_key_0:
+    executable: "my_executable_0"
+    setup:
+      - "my_setup_item_0"
+      - "my_setup_item_1"
+    shell:
+      invoke: "my_invoke_0"
+      heredoc: true
+  my_vivado_executors_key_1:
+    executable: "my_executable_1"
+    setup:
+      - "my_setup_item_2"
+      - "my_setup_item_3"
+    shell:
+      invoke: "my_invoke_1"
+      heredoc: false
+default_cores: 0
+max_parallel_builds: 0
+compile_order_format: "my_compile_order_format_0"
+```
+
+### Project Configuration Example
+
+```yaml
+project_information:
+  project_name: "my_project_name_0"
+  top_level_file_name: "my_top_level_file_name_0"
+  device_info:
+    part_name: "my_part_name_0"
+    board_name: "my_board_name_0"
+    board_part: "my_board_part_0"
+  vivado_version:
+    year: "my_year_0"
+    minor: "my_minor_0"
+  top_level_generics:
+    my_top_level_generics_key_0:
+      type: "my_type_0"
+      value: "my_value_0"
+      width: 0
+      format: "my_format_0"
+    my_top_level_generics_key_1:
+      type: "my_type_1"
+      value: "my_value_1"
+      width: 1
+      format: "my_format_1"
+hdldepends_config: "my_hdldepends_config_0"
+vivado_executors:
+  my_vivado_executors_key_0:
+    executable: "my_executable_0"
+    setup:
+      - "my_setup_item_0"
+      - "my_setup_item_1"
+    shell:
+      invoke: "my_invoke_0"
+      heredoc: true
+  my_vivado_executors_key_1:
+    executable: "my_executable_1"
+    setup:
+      - "my_setup_item_2"
+      - "my_setup_item_3"
+    shell:
+      invoke: "my_invoke_1"
+      heredoc: false
+constraints:
+  - file: "my_file_0"
+    fileset: "my_fileset_0"
+    execution: "my_execution_0"
+    properties:
+      - "my_properties_item_0"
+      - "my_properties_item_1"
+  - file: "my_file_1"
+    fileset: "my_fileset_1"
+    execution: "my_execution_1"
+    properties:
+      - "my_properties_item_2"
+      - "my_properties_item_3"
+block_designs:
+  - file: "my_file_2"
+    commands:
+      - "my_commands_item_0"
+      - "my_commands_item_1"
+  - file: "my_file_3"
+    commands:
+      - "my_commands_item_2"
+      - "my_commands_item_3"
+synth_options:
+  my_synth_options_key_0: "my_synth_options_0"
+  my_synth_options_key_1: "my_synth_options_1"
+impl_options:
+  my_impl_options_key_0: "my_impl_options_0"
+  my_impl_options_key_1: "my_impl_options_1"
+build_configuration:
+  write_hw_platform:
+    include_bit: true
+environment_setup:
+  my_environment_setup_key_0: "my_environment_setup_0"
+  my_environment_setup_key_1: "my_environment_setup_1"
+hdlproject_config_version: "my_hdlproject_config_version_0"
+```

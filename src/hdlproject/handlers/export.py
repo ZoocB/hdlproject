@@ -1,28 +1,30 @@
-# handlers/export.py
-"""Export handler - using service composition and step result patterns"""
+"""Export handler - exports Vivado projects to archive.
+
+This handler creates exportable archives of Vivado projects.
+"""
 
 from pathlib import Path
-from typing import Optional
 from dataclasses import dataclass
+from typing import Optional
 
 from hdlproject.handlers.base.handler import BaseHandler
-from hdlproject.handlers.base.context import ExecutionContext, SingleProjectContext
 from hdlproject.handlers.base.operation_config import OperationConfig
 from hdlproject.handlers.registry import HandlerInfo, register_handler
+from hdlproject.runtime.context import ExecutionContext, SingleProjectExecution
 from hdlproject.utils.vivado_output_parser import StepPattern
 from hdlproject.utils.logging_manager import get_project_logger
 
 
 @dataclass
-class ExportOptions:
-    """Export operation options"""
+class ExportHandlerOptions:
+    """Export operation options."""
 
     clean: bool = False
     output_dir: Optional[str] = None
 
 
 class ExportHandler(BaseHandler):
-    """Handler for exporting Vivado projects"""
+    """Handler for exporting Vivado projects."""
 
     CONFIG = OperationConfig(
         name="export",
@@ -60,7 +62,7 @@ class ExportHandler(BaseHandler):
                 "Applying Implementation Options",
                 "handle_impl_settings::apply_custom_impl_options",
             ),
-            # Export-specific steps - start/complete patterns
+            # Export-specific steps
             StepPattern.start("Archiving Project", r"archive_project"),
             StepPattern.complete(
                 "Archiving Project", r"archiving.*project|archive.*completed"
@@ -89,48 +91,51 @@ class ExportHandler(BaseHandler):
     )
 
     def configure(self, context: ExecutionContext) -> None:
-        """Display export configuration"""
+        """Display export configuration."""
         print("\n" + "=" * 50)
         print("Export Configuration")
         print("=" * 50)
-        print(f"Projects: {len(context.projects)}")
-        print(f"Clean export: {'Yes' if context.options.clean else 'No'}")
-        if context.options.output_dir:
-            print(f"Output directory: {context.options.output_dir}")
+        print(f"Projects: {len(context.project_runtimes)}")
+        print(f"Clean export: {'Yes' if context.handler_options.clean else 'No'}")
+        if context.handler_options.output_dir:
+            print(f"Output directory: {context.handler_options.output_dir}")
         print("\nProjects to export:")
-        for proj_ctx in context.projects:
-            print(f"  - {proj_ctx.config.name}")
+        for runtime in context.project_runtimes:
+            print(f"  - {runtime.project_name}")
         print("=" * 50 + "\n")
 
-    def prepare(self, context: SingleProjectContext) -> None:
-        """Prepare for export - generate compile order"""
-        project_logger = get_project_logger(context.project.config.name)
+    def prepare(self, context: SingleProjectExecution) -> None:
+        """Prepare for export - generate compile order."""
+        project_logger = get_project_logger(context.project_name)
 
         # Handle custom output directory
-        if context.options.output_dir:
-            custom_output = Path(context.options.output_dir)
+        if context.handler_options.output_dir:
+            custom_output = Path(context.handler_options.output_dir)
             custom_output.mkdir(parents=True, exist_ok=True)
             project_logger.info(f"Using custom output directory: {custom_output}")
 
-        # Generate compile order if available
-        if context.compile_order_service.is_available():
-            compile_order_path = context.compile_order_service.generate_for_project(
-                context.project
-            )
-            context.project.compile_order_path = compile_order_path
-        else:
-            project_logger.debug("Compile order service not available")
+        # Prepare compile order
+        context.services.compile_order_service.prepare_for_operation(
+            context.operation_paths
+        )
 
-    def execute_single(self, context: SingleProjectContext) -> bool:
-        """Execute export operation"""
-        project_logger = get_project_logger(context.project.config.name)
+    def execute_single(self, context: SingleProjectExecution) -> bool:
+        """Execute export operation."""
+        project_logger = get_project_logger(context.project_name)
         project_logger.info("Starting export")
 
-        result = context.vivado_executor.execute(
-            project_context=context.project,
+        extra_commands = context.services.compile_order_service.get_extra_commands(
+            context.operation_paths
+        )
+
+        result = context.services.vivado_executor.execute(
+            runtime=context.runtime,
+            global_config=self.environment.global_config,
+            operation_paths=context.operation_paths,
             tcl_mode=self.CONFIG.tcl_mode,
             step_patterns=self.CONFIG.step_patterns,
-            status_display=context.status_manager.display,
+            status_display=context.services.status_manager.display,
+            extra_commands=extra_commands,
         )
 
         if not result.success:
@@ -144,7 +149,7 @@ register_handler(
     HandlerInfo(
         name="export",
         handler_class=ExportHandler,
-        options_class=ExportOptions,
+        options_class=ExportHandlerOptions,
         description="Export Vivado projects to archive",
         menu_name="Export Project",
         cli_arguments=[

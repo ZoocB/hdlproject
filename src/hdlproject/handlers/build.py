@@ -1,24 +1,33 @@
-# handlers/build.py
-"""Build handler - refactored with service composition and step result patterns"""
+"""Build handler - builds Vivado projects from source.
+
+This handler executes the full build flow: synthesis, implementation,
+and bitstream generation.
+"""
+
+from dataclasses import dataclass
+
 from hdlproject.handlers.base.handler import BaseHandler
-from hdlproject.handlers.base.context import ExecutionContext, SingleProjectContext
 from hdlproject.handlers.base.operation_config import OperationConfig
 from hdlproject.handlers.registry import HandlerInfo, register_handler
+from hdlproject.runtime.context import ExecutionContext, SingleProjectExecution
 from hdlproject.utils.vivado_output_parser import StepPattern
 from hdlproject.utils.logging_manager import get_project_logger
-from dataclasses import dataclass
 
 
 @dataclass
-class BuildOptions:
-    """Build operation options"""
+class BuildHandlerOptions:
+    """Build operation options.
+
+    These are runtime options passed from the CLI, distinct from
+    BuildConfiguration in the project config.
+    """
 
     cores: int = 2
     clean: bool = False
 
 
 class BuildHandler(BaseHandler):
-    """Handler for building Vivado projects"""
+    """Handler for building Vivado projects."""
 
     CONFIG = OperationConfig(
         name="build",
@@ -92,41 +101,43 @@ class BuildHandler(BaseHandler):
     )
 
     def configure(self, context: ExecutionContext) -> None:
-        """Display build configuration"""
+        """Display build configuration."""
         print("\n" + "=" * 50)
         print("Build Configuration")
         print("=" * 50)
-        print(f"Projects: {len(context.projects)}")
-        print(f"CPU cores per project: {context.options.cores}")
-        print(f"Clean build: {'Yes' if context.options.clean else 'No'}")
+        print(f"Projects: {len(context.project_runtimes)}")
+        print(f"CPU cores per project: {context.handler_options.cores}")
+        print(f"Clean build: {'Yes' if context.handler_options.clean else 'No'}")
         print("\nProjects to build:")
-        for proj_ctx in context.projects:
-            print(f"  - {proj_ctx.config.name}")
+        for runtime in context.project_runtimes:
+            version = runtime.vivado_version
+            print(f"  - {runtime.project_name} (Vivado {version})")
         print("=" * 50 + "\n")
 
-    def prepare(self, context: SingleProjectContext) -> None:
-        """Prepare for build - generate compile order"""
-        project_logger = get_project_logger(context.project.config.name)
+    def prepare(self, context: SingleProjectExecution) -> None:
+        """Prepare for build - generate compile order if local setup."""
+        context.services.compile_order_service.prepare_for_operation(
+            context.operation_paths
+        )
 
-        if context.compile_order_service.is_available():
-            compile_order_path = context.compile_order_service.generate_for_project(
-                context.project
-            )
-            context.project.compile_order_path = compile_order_path
-        else:
-            project_logger.debug("Compile order service not available")
+    def execute_single(self, context: SingleProjectExecution) -> bool:
+        """Execute build for single project."""
+        project_logger = get_project_logger(context.project_name)
+        project_logger.info(f"Building with {context.handler_options.cores} cores")
 
-    def execute_single(self, context: SingleProjectContext) -> bool:
-        """Execute build for single project"""
-        project_logger = get_project_logger(context.project.config.name)
-        project_logger.info(f"Building with {context.options.cores} cores")
+        extra_commands = context.services.compile_order_service.get_extra_commands(
+            context.operation_paths
+        )
 
-        result = context.vivado_executor.execute(
-            project_context=context.project,
+        result = context.services.vivado_executor.execute(
+            runtime=context.runtime,
+            global_config=self.environment.global_config,
+            operation_paths=context.operation_paths,
             tcl_mode=self.CONFIG.tcl_mode,
             step_patterns=self.CONFIG.step_patterns,
-            status_display=context.status_manager.display,
-            cores=context.options.cores,
+            status_display=context.services.status_manager.display,
+            cores=context.handler_options.cores,
+            extra_commands=extra_commands,
         )
 
         if not result.success:
@@ -135,11 +146,12 @@ class BuildHandler(BaseHandler):
         return result.success
 
 
+# Register handler
 register_handler(
     HandlerInfo(
         name="build",
         handler_class=BuildHandler,
-        options_class=BuildOptions,
+        options_class=BuildHandlerOptions,
         description="Build Vivado projects from source",
         menu_name="Build Project",
         cli_arguments=[
