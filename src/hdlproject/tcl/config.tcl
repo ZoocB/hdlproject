@@ -82,13 +82,11 @@ namespace eval config {
         }
         return {}
     }
-    
-    # Get build options as a dictionary
-    proc get_build_options {} {
+
+    proc get_build_configuration {} {
         variable config_dict
-        
-        if {[dict exists $config_dict build_options]} {
-            return [dict get $config_dict build_options]
+        if {[dict exists $config_dict build_configuration]} {
+            return [dict get $config_dict build_configuration]
         }
         return {}
     }
