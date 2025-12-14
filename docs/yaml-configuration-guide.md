@@ -61,7 +61,6 @@ Block design configuration.
 Example:
 ```yaml
 block_designs:
-  - file: system.tcl
   - file: processing_system.bd
     commands:
       - "regenerate_bd_layout"
@@ -110,7 +109,7 @@ constraints:
   - file: pins.xdc
     fileset: constrs_1
   - file: debug.xdc
-    execution: implementation
+    execution: immediate
     properties:
       USED_IN_SYNTHESIS: false
 ```
@@ -119,7 +118,7 @@ constraints:
 |-------|------|----------|---------|-------------|
 | `file` | str | Yes | `—` | Path to constraint file (.xdc), relative to config file. |
 | `fileset` | str | No | `null` | Target fileset (e.g., constrs_1). Defaults to main constraint fileset. |
-| `execution` | str | No | `null` | When applied: 'synthesis', 'implementation', or both if not specified. |
+| `execution` | str | No | `null` | Options: `immediate` - Executes the script immediate upon processing it and doesnt add it to the project. |
 | `properties` | list[dict[str, str]] | dict[str, str] | No | `null` | Additional Vivado properties for the constraint file. |
 
 ### DeviceInfo
@@ -180,19 +179,24 @@ Example:
 shell:
   invoke: "docker_tool vivado-2023.2"
   heredoc: true
+  mount_repo_root: true
+  options:
+    - "--pull=never"
 ```
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `invoke` | str | Yes | `—` | Command to start the shell (e.g., 'docker_tool vivado-2023.2') |
 | `heredoc` | bool | No | `False` | Use heredoc/stdin mode. Commands passed via stdin with 'set -e'. |
+| `mount_repo_root` | bool | No | `False` | Mount repository root into container. Adds '--volume {repo_root}:{repo_root}' to options. |
+| `options` | list[str] | No | `[]` | Additional options passed to the shell command after '--'. For docker_tool: docker/podman options like '--pull=never'. |
 
 ### VivadoExecutor
 
 Configuration for executing a specific Vivado version.
 
 Defines how to execute Vivado and related tools (like hdldepends) for a
-specific version. Supports both local installations and containerized
+specific version. Supports both local installations and containerised
 environments.
 
 The execution flow is: [shell] → [setup] → [injected commands] → [executable]
@@ -206,13 +210,18 @@ vivado_executors:
       - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"
     executable: "vivado"
 
-  # Docker container with heredoc
+  # Docker container with heredoc and repo mounting
   "2023.2":
     shell:
       invoke: "docker_tool vivado-2023.2"
       heredoc: true
+      mount_repo_root: true
+      options:
+        - "--pull=never"
     setup:
       - "source /opt/Xilinx/Vivado/2023.2/settings64.sh"
+      - 'REPO_ROOT="$(git rev-parse --show-toplevel)"'
+      - 'source "${REPO_ROOT}/venv/bin/activate"'
     executable: "vivado"
 
   # Local with extra environment setup
@@ -227,7 +236,7 @@ vivado_executors:
 |-------|------|----------|---------|-------------|
 | `executable` | str | Yes | `—` | Command to invoke the tool (e.g., 'vivado') |
 | `setup` | list[str] | No | `[]` | Setup commands to run first (e.g., source settings.sh). Executed before any injected commands like hdldepends. |
-| `shell` | [ShellConfig](#shellconfig) | No | `null` | Custom shell configuration. If not set, uses /bin/bash with && chaining. Use this for Docker or other containerized environments. |
+| `shell` | [ShellConfig](#shellconfig) | No | `null` | Custom shell configuration. If not set, uses /bin/bash with && chaining. Use this for Docker or other containerised environments. |
 
 ### GlobalConfiguration
 
@@ -363,6 +372,10 @@ vivado_executors:
     shell:
       invoke: "my_invoke_0"
       heredoc: true
+      mount_repo_root: true
+      options:
+        - "my_options_item_0"
+        - "my_options_item_1"
   my_vivado_executors_key_1:
     executable: "my_executable_1"
     setup:
@@ -371,6 +384,10 @@ vivado_executors:
     shell:
       invoke: "my_invoke_1"
       heredoc: false
+      mount_repo_root: false
+      options:
+        - "my_options_item_2"
+        - "my_options_item_3"
 default_cores: 0
 max_parallel_builds: 0
 compile_order_format: "my_compile_order_format_0"
@@ -410,6 +427,10 @@ vivado_executors:
     shell:
       invoke: "my_invoke_0"
       heredoc: true
+      mount_repo_root: true
+      options:
+        - "my_options_item_0"
+        - "my_options_item_1"
   my_vivado_executors_key_1:
     executable: "my_executable_1"
     setup:
@@ -418,6 +439,10 @@ vivado_executors:
     shell:
       invoke: "my_invoke_1"
       heredoc: false
+      mount_repo_root: false
+      options:
+        - "my_options_item_2"
+        - "my_options_item_3"
 constraints:
   - file: "my_file_0"
     fileset: "my_fileset_0"

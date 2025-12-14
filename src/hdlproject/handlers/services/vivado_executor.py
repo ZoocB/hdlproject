@@ -155,6 +155,7 @@ class VivadoExecutorService:
         shell_args, stdin_content = executor.build_command(
             executable_args=vivado_args,
             extra_commands=extra_commands,
+            repository_root=runtime.repository_root,
         )
 
         # Create output parser
@@ -307,8 +308,10 @@ class VivadoExecutorService:
             executor = runtime.config.get_vivado_executor(global_config)
 
             vivado_args = ["-mode", "gui", "-notrace", str(project_path)]
+
             shell_args, stdin_content = executor.build_command(
-                executable_args=vivado_args
+                executable_args=vivado_args,
+                repository_root=runtime.repository_root,
             )
 
             logger.info(f"Opening Vivado GUI: {' '.join(shell_args)}")
@@ -366,7 +369,10 @@ class VivadoExecutorService:
             tcl_string,
         ]
 
-        shell_args, stdin_content = executor.build_command(executable_args=vivado_args)
+        shell_args, stdin_content = executor.build_command(
+            executable_args=vivado_args,
+            repository_root=runtime.repository_root,
+        )
 
         try:
             popen_args = self._prepare_popen_args(shell_args, stdin_content)

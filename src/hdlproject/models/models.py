@@ -39,6 +39,7 @@ from typing import Optional, Any, Union
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 import os
 import re
+from pathlib import Path
 
 
 class FlexibleModel(BaseModel):
@@ -120,6 +121,9 @@ class ShellConfig(FlexibleModel):
     shell:
       invoke: "docker_tool vivado-2023.2"
       heredoc: true
+      mount_repo_root: true
+      options:
+        - "--pull=never"
     ```
     """
 
@@ -130,13 +134,27 @@ class ShellConfig(FlexibleModel):
         default=False,
         description="Use heredoc/stdin mode. Commands passed via stdin with 'set -e'.",
     )
+    mount_repo_root: bool = Field(
+        default=False,
+        description=(
+            "Mount repository root into container. "
+            "Adds '--volume {repo_root}:{repo_root}' to options."
+        ),
+    )
+    options: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Additional options passed to the shell command after '--'. "
+            "For docker_tool: docker/podman options like '--pull=never'."
+        ),
+    )
 
 
 class VivadoExecutor(FlexibleModel):
     """Configuration for executing a specific Vivado version.
 
     Defines how to execute Vivado and related tools (like hdldepends) for a
-    specific version. Supports both local installations and containerized
+    specific version. Supports both local installations and containerised
     environments.
 
     The execution flow is: [shell] → [setup] → [injected commands] → [executable]
@@ -150,13 +168,18 @@ class VivadoExecutor(FlexibleModel):
           - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"
         executable: "vivado"
 
-      # Docker container with heredoc
+      # Docker container with heredoc and repo mounting
       "2023.2":
         shell:
           invoke: "docker_tool vivado-2023.2"
           heredoc: true
+          mount_repo_root: true
+          options:
+            - "--pull=never"
         setup:
           - "source /opt/Xilinx/Vivado/2023.2/settings64.sh"
+          - 'REPO_ROOT="$(git rev-parse --show-toplevel)"'
+          - 'source "${REPO_ROOT}/venv/bin/activate"'
         executable: "vivado"
 
       # Local with extra environment setup
@@ -180,7 +203,7 @@ class VivadoExecutor(FlexibleModel):
         default=None,
         description=(
             "Custom shell configuration. If not set, uses /bin/bash with && chaining. "
-            "Use this for Docker or other containerized environments."
+            "Use this for Docker or other containerised environments."
         ),
     )
 
@@ -188,12 +211,14 @@ class VivadoExecutor(FlexibleModel):
         self,
         executable_args: list[str],
         extra_commands: Optional[list[str]] = None,
+        repository_root: Optional[Path] = None,
     ) -> tuple[list[str], Optional[str]]:
         """Build the execution command.
 
         Args:
             executable_args: Arguments to pass to the executable
             extra_commands: Additional commands to run before executable (e.g., hdldepends)
+            repository_root: Repository root path (needed if shell.mount_repo_root is True)
 
         Returns:
             Tuple of (shell_args, stdin_content):
@@ -213,15 +238,51 @@ class VivadoExecutor(FlexibleModel):
             # Heredoc mode: pass commands via stdin
             script_lines = ["set -e"] + all_commands
             stdin_content = "\n".join(script_lines)
-            return [self.shell.invoke], stdin_content
+
+            # Build invoke command with options
+            invoke_cmd = self._build_shell_invoke(repository_root)
+            return [invoke_cmd], stdin_content
         elif self.shell:
             # Custom shell without heredoc: use -c with && chaining
             command_chain = " && ".join(all_commands)
-            return [self.shell.invoke, "-c", command_chain], None
+            invoke_cmd = self._build_shell_invoke(repository_root)
+            return [invoke_cmd, "-c", command_chain], None
         else:
             # Local bash: use && chaining
             command_chain = " && ".join(all_commands)
             return ["/bin/bash", "-c", command_chain], None
+
+    def _build_shell_invoke(self, repository_root: Optional[Path] = None) -> str:
+        """Build the shell invocation command with options.
+
+        Args:
+            repository_root: Repository root path for mount_repo_root option
+
+        Returns:
+            Complete shell invoke command string
+        """
+        if not self.shell:
+            return "/bin/bash"
+
+        parts = [self.shell.invoke]
+
+        # Collect all options
+        all_options = list(self.shell.options)
+
+        # Add repo root mount if requested
+        if self.shell.mount_repo_root:
+            if repository_root:
+                all_options.append(f"--volume {repository_root}:{repository_root}")
+            else:
+                # Log warning but don't fail - repository_root might not be available
+                pass
+
+        # Add options after '--' separator
+        if all_options:
+            parts.append("--")
+            parts.extend(all_options)
+
+        return " ".join(parts)
 
     def get_environment_command(self) -> Optional[str]:
         """Get command to capture environment variables.
@@ -402,7 +463,7 @@ class Constraint(FlexibleModel):
       - file: pins.xdc
         fileset: constrs_1
       - file: debug.xdc
-        execution: implementation
+        execution: immediate
         properties:
           USED_IN_SYNTHESIS: false
     ```
@@ -417,7 +478,7 @@ class Constraint(FlexibleModel):
     )
     execution: Optional[str] = Field(
         default=None,
-        description="When applied: 'synthesis', 'implementation', or both if not specified.",
+        description="Options: `immediate` - Executes the script immediate upon processing it and doesnt add it to the project.",
     )
     properties: Optional[Union[list[dict[str, str]], dict[str, str]]] = Field(
         default=None,
@@ -438,7 +499,6 @@ class BlockDesign(FlexibleModel):
     Example:
     ```yaml
     block_designs:
-      - file: system.tcl
       - file: processing_system.bd
         commands:
           - "regenerate_bd_layout"
