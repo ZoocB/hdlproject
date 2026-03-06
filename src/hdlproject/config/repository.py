@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from hdlproject.models.models import GlobalConfiguration
+from hdlproject.constants import GLOBAL_CONFIG_FILENAME
 from hdlproject.utils.logging_manager import get_logger
 
 logger = get_logger(__name__)
@@ -21,8 +22,6 @@ class RepositoryConfigManager:
     For new code, prefer using ConfigLoader directly.
     """
 
-    CONFIG_FILENAME = "hdlproject_global_config.yaml"
-
     def __init__(self, repository_root: Path):
         """initialise the repository config manager.
 
@@ -30,7 +29,7 @@ class RepositoryConfigManager:
             repository_root: Path to the git repository root
         """
         self.repository_root = repository_root
-        self.config_path = repository_root / self.CONFIG_FILENAME
+        self.config_path = repository_root / GLOBAL_CONFIG_FILENAME
         self._config: Optional[GlobalConfiguration] = None
 
     def load(self) -> GlobalConfiguration:
@@ -49,7 +48,7 @@ class RepositoryConfigManager:
         if not self.config_path.exists():
             raise FileNotFoundError(
                 f"Global configuration file not found: {self.config_path}\n"
-                f"Please create {self.CONFIG_FILENAME} at repository root with:\n"
+                f"Please create {GLOBAL_CONFIG_FILENAME} at repository root with:\n"
                 f'  project_dir: "projects"\n'
                 f"  tools:\n"
                 f"    vivado:\n"

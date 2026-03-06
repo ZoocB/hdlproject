@@ -13,6 +13,7 @@ from hdlproject.models.resolved import ResolvedProjectConfig
 from hdlproject.config.config_resolver import YAMLConfigLoader
 from hdlproject.config.resolver import ConfigResolver
 from hdlproject.runtime.context import RuntimeEnvironment
+from hdlproject.constants import GLOBAL_CONFIG_FILENAME, PROJECT_CONFIG_FILENAME
 from hdlproject.utils.logging_manager import get_logger
 
 logger = get_logger(__name__)
@@ -26,9 +27,6 @@ class ConfigLoader:
     - Project configuration with inheritance
     - Runtime context creation
     """
-
-    GLOBAL_CONFIG_FILENAME = "hdlproject_global_config.yaml"
-    PROJECT_CONFIG_FILENAME = "hdlproject_project_config.yaml"
 
     def __init__(self, repository_root: Path):
         """initialise the config loader.
@@ -53,12 +51,12 @@ class ConfigLoader:
         if self._global_config is not None:
             return self._global_config
 
-        config_path = self.repository_root / self.GLOBAL_CONFIG_FILENAME
+        config_path = self.repository_root / GLOBAL_CONFIG_FILENAME
 
         if not config_path.exists():
             raise FileNotFoundError(
                 f"Global configuration file not found: {config_path}\n"
-                f"Please create {self.GLOBAL_CONFIG_FILENAME} at repository root with:\n"
+                f"Please create {GLOBAL_CONFIG_FILENAME} at repository root with:\n"
                 f'  project_dir: "projects"\n'
                 f"  tools:\n"
                 f"    vivado:\n"
@@ -108,7 +106,7 @@ class ConfigLoader:
         if not project_dir.exists():
             raise FileNotFoundError(f"Project directory not found: {project_dir}")
 
-        config_path = project_dir / self.PROJECT_CONFIG_FILENAME
+        config_path = project_dir / PROJECT_CONFIG_FILENAME
 
         if not config_path.exists():
             raise FileNotFoundError(

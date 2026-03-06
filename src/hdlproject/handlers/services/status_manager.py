@@ -2,6 +2,15 @@
 
 This module provides a service for managing the live status display
 during handler execution.
+
+Thread Safety:
+  All methods in StatusManager delegate to the underlying LiveStatusDisplay object
+  with null checks. The LiveStatusDisplay instance is protected from concurrent
+  access by single initialization before parallel execution begins. Each project
+  thread only updates its own project's status (no shared mutable state per thread),
+  and LiveStatusDisplay uses Rich's Live display which handles thread-safe rendering.
+
+  Safe for concurrent use during parallel project execution.
 """
 
 from typing import Optional
@@ -17,6 +26,10 @@ class StatusManager:
     """Manages status display lifecycle with simplified interface.
 
     Provides methods for updating project status during execution.
+
+    Thread Safety: Designed for use by multiple project threads. All method calls
+    are delegated to the underlying LiveStatusDisplay (or skipped if display is None).
+    Each thread updates only its own project's status, avoiding write races.
     """
 
     def __init__(
