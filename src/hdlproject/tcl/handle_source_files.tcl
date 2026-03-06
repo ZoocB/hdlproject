@@ -141,15 +141,25 @@ namespace eval handle_source_files {
     # Set top level file
     proc set_top_level {top_level_file_name} {
         variable MODULE_NAME_TOP
-        
+
         # Initialise logging for this module
         common::log_init $MODULE_NAME_TOP
-        
+
         # Set top level for sources_1 fileset
         set obj [get_filesets sources_1]
         set_property -name "top" -value "$top_level_file_name" -objects $obj
         # set_property -name "top_auto_set" -value "0" -objects $obj
-        
+
+        # Force top-level file to VHDL 2008 — hdldepends does not support
+        # specifying ver_tag via CLI, so the compile order JSON never includes it.
+        set top_files [get_files -of_objects [get_filesets sources_1] -filter "NAME =~ *${top_level_file_name}*"]
+        foreach f $top_files {
+            if {[get_property file_type $f] eq "VHDL"} {
+                set_property -name "file_type" -value "VHDL 2008" -objects $f
+                common::log_status "Forced top-level file to VHDL 2008: [file tail [get_property NAME $f]]"
+            }
+        }
+
         # Set top level for simulation if it exists
         if {![string equal [get_filesets -quiet sim_1] ""]} {
             set obj [get_filesets sim_1]
@@ -157,7 +167,7 @@ namespace eval handle_source_files {
             # set_property -name "top_auto_set" -value "0" -objects $obj
             set_property -name "top_lib" -value "xil_defaultlib" -objects $obj
         }
-        
+
         # Return result using automatic tracking
         return [common::report_step_result "handle_source_files::set_top_level" $MODULE_NAME_TOP]
     }
