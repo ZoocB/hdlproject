@@ -11,13 +11,14 @@ from typing import Optional
 from hdlproject.models.models import (
     GlobalConfiguration,
     ProjectConfiguration,
-    VivadoExecutor,
+    ToolExecutor,
 )
 from hdlproject.models.resolved import (
     ResolvedProjectConfig,
     ResolvedPaths,
     ResolvedOperationPaths,
     KNOWN_OPERATIONS,
+    get_hdlproject_dir_name,
 )
 from hdlproject.utils.logging_manager import get_logger
 
@@ -28,7 +29,7 @@ class ConfigResolver:
     """Resolves global + project configuration into a flat ResolvedProjectConfig.
 
     Merge rules:
-    - vivado_executor: project version wins over global version
+    - executor: project tools override global tools for the same tool/version
     - hdldepends_config: project overrides global
     - compile_order_format, default_cores, max_parallel_builds: from global only
     - Everything else: from project config only
@@ -59,8 +60,11 @@ class ConfigResolver:
         Returns:
             ResolvedProjectConfig with everything pre-computed
         """
-        # Resolve the vivado executor (project -> global fallback)
-        vivado_executor = self._resolve_vivado_executor(
+        # Determine tool from project config
+        tool = project_config.project_information.tool
+
+        # Resolve the tool executor (project -> global fallback)
+        tool_executor = self._resolve_tool_executor(
             global_config, project_config
         )
 
@@ -75,8 +79,8 @@ class ConfigResolver:
             repository_root,
         )
 
-        # Build resolved paths
-        hdlproject_dir = project_dir / ".hdlproject-vivado"
+        # Build resolved paths (tool-specific directory)
+        hdlproject_dir = project_dir / get_hdlproject_dir_name(tool)
         paths = ResolvedPaths(
             repository_root=repository_root,
             project_dir=project_dir,
@@ -96,6 +100,7 @@ class ConfigResolver:
             # Identity
             project_name=project_name,
             vivado_project_name=project_config.project_information.project_name,
+            tool=tool,
             # Paths
             paths=paths,
             operation_paths=operation_paths,
@@ -108,25 +113,25 @@ class ConfigResolver:
             build_configuration=project_config.build_configuration,
             environment_setup=project_config.environment_setup,
             # Merged settings
-            vivado_executor=vivado_executor,
+            executor=tool_executor,
             compile_order_format=global_config.compile_order_format,
             default_cores=global_config.default_cores,
             max_parallel_builds=global_config.max_parallel_builds,
         )
 
-    def _resolve_vivado_executor(
+    def _resolve_tool_executor(
         self,
         global_config: GlobalConfiguration,
         project_config: ProjectConfiguration,
-    ) -> VivadoExecutor:
-        """Resolve the vivado executor for this project's version.
+    ) -> ToolExecutor:
+        """Resolve the tool executor for this project's tool and version.
 
         Resolution order: project -> global.
 
         Raises:
-            ValueError: If no executor configured for the required version
+            ValueError: If no executor configured for the required tool/version
         """
-        return project_config.get_vivado_executor(global_config)
+        return project_config.get_tool_executor(global_config)
 
     def _resolve_hdldepends_path(
         self,
@@ -210,7 +215,7 @@ class ConfigResolver:
         """Build operation paths for a given operation.
 
         Args:
-            hdlproject_dir: The .hdlproject-vivado directory
+            hdlproject_dir: The .hdlproject-{tool} directory
             operation: Operation name (build, export, open)
 
         Returns:

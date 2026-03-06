@@ -110,8 +110,7 @@ class BuildHandler(BaseHandler):
         print(f"Clean build: {'Yes' if context.handler_options.clean else 'No'}")
         print("\nProjects to build:")
         for config in context.resolved_configs:
-            version = config.vivado_version
-            print(f"  - {config.project_name} (Vivado {version})")
+            print(f"  - {config.project_name} ({config.tool} {config.tool_version})")
         print("=" * 50 + "\n")
 
     def prepare(self, context: SingleProjectExecution) -> None:

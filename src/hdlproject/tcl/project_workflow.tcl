@@ -210,22 +210,14 @@ if {[dict exists $device_info board_part]} {
 set top_level_file_name [dict get $project_info top_level_file_name]
 set project_name [dict get $project_info project_name]
 
-# Extract Vivado version with defaults
-if {[dict exists $device_info vivado_version_year]} {
-    set vivado_version_year [dict get $device_info vivado_version_year]
-} elseif {[dict exists $project_info vivado_version_year]} {
-    set vivado_version_year [dict get $project_info vivado_version_year]
+# Extract tool version from config (e.g., "2020.1") or fall back to running Vivado version
+if {[dict exists $project_info tool_version]} {
+    set tool_version [dict get $project_info tool_version]
+    set vivado_version_year [lindex [split $tool_version .] 0]
+    set vivado_version_sub [lindex [split $tool_version .] 1]
 } else {
     # Default to current Vivado version
     set vivado_version_year [lindex [split [version -short] .] 0]
-}
-
-if {[dict exists $device_info vivado_version_sub]} {
-    set vivado_version_sub [dict get $device_info vivado_version_sub]
-} elseif {[dict exists $project_info vivado_version_sub]} {
-    set vivado_version_sub [dict get $project_info vivado_version_sub]
-} else {
-    # Default to current Vivado version
     set vivado_version_sub [lindex [split [version -short] .] 1]
 }
 

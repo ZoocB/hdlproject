@@ -150,44 +150,38 @@ class ShellConfig(FlexibleModel):
     )
 
 
-class VivadoExecutor(FlexibleModel):
-    """Configuration for executing a specific Vivado version.
+class ToolExecutor(FlexibleModel):
+    """Configuration for executing a specific tool version.
 
-    Defines how to execute Vivado and related tools (like hdldepends) for a
-    specific version. Supports both local installations and containerised
-    environments.
+    Defines how to execute a tool (e.g., Vivado) and related utilities
+    (like hdldepends) for a specific version. Supports both local
+    installations and containerised environments.
 
     The execution flow is: [shell] → [setup] → [injected commands] → [executable]
 
     Example:
     ```yaml
-    vivado_executors:
-      # Local installation
-      "2020.1":
-        setup:
-          - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"
-        executable: "vivado"
+    tools:
+      vivado:
+        # Local installation
+        "2020.1":
+          setup:
+            - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"
+          executable: "vivado"
 
-      # Docker container with heredoc and repo mounting
-      "2023.2":
-        shell:
-          invoke: "docker_tool vivado-2023.2"
-          heredoc: true
-          mount_repo_root: true
-          options:
-            - "--pull=never"
-        setup:
-          - "source /opt/Xilinx/Vivado/2023.2/settings64.sh"
-          - 'REPO_ROOT="$(git rev-parse --show-toplevel)"'
-          - 'source "${REPO_ROOT}/venv/bin/activate"'
-        executable: "vivado"
-
-      # Local with extra environment setup
-      "2021.1":
-        setup:
-          - "source /tools/Xilinx/Vivado/2021.1/settings64.sh"
-          - "export XILINX_LOCAL_USER_DATA=no"
-        executable: "vivado"
+        # Docker container with heredoc and repo mounting
+        "2023.2":
+          shell:
+            invoke: "docker_tool vivado-2023.2"
+            heredoc: true
+            mount_repo_root: true
+            options:
+              - "--pull=never"
+          setup:
+            - "source /opt/Xilinx/Vivado/2023.2/settings64.sh"
+            - 'REPO_ROOT="$(git rev-parse --show-toplevel)"'
+            - 'source "${REPO_ROOT}/venv/bin/activate"'
+          executable: "vivado"
     ```
     """
 
@@ -304,6 +298,10 @@ class VivadoExecutor(FlexibleModel):
         return f"{setup_chain} && env"
 
 
+# Backwards-compatible alias
+VivadoExecutor = ToolExecutor
+
+
 class GlobalConfiguration(FlexibleModel):
     """Global repository configuration (`hdlproject_global_config.yaml`).
 
@@ -317,18 +315,19 @@ class GlobalConfiguration(FlexibleModel):
     max_parallel_builds: 4
     compile_order_format: "json"
 
-    vivado_executors:
-      "2020.1":
-        setup:
-          - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"
-        executable: "vivado"
-      "2023.2":
-        shell:
-          invoke: "docker_tool vivado-2023.2"
-          heredoc: true
-        setup:
-          - "source /opt/Xilinx/Vivado/2023.2/settings64.sh"
-        executable: "vivado"
+    tools:
+      vivado:
+        "2020.1":
+          setup:
+            - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"
+          executable: "vivado"
+        "2023.2":
+          shell:
+            invoke: "docker_tool vivado-2023.2"
+            heredoc: true
+          setup:
+            - "source /opt/Xilinx/Vivado/2023.2/settings64.sh"
+          executable: "vivado"
     ```
     """
 
@@ -339,9 +338,12 @@ class GlobalConfiguration(FlexibleModel):
         default=None,
         description="Default hdldepends config path, relative to repository root. Overridable per-project.",
     )
-    vivado_executors: dict[str, VivadoExecutor] = Field(
+    tools: dict[str, dict[str, ToolExecutor]] = Field(
         default_factory=dict,
-        description="Vivado execution configs keyed by version (e.g., '2020.1'). Overridable per-project.",
+        description=(
+            "Tool execution configs keyed by tool name then version. "
+            "e.g., tools.vivado.'2020.1'. Overridable per-project."
+        ),
     )
     default_cores: int = Field(
         default=2,
@@ -356,9 +358,10 @@ class GlobalConfiguration(FlexibleModel):
         description="Output format for compile order files ('json' or 'tcl').",
     )
 
-    def get_vivado_executor(self, version: str) -> Optional[VivadoExecutor]:
-        """Get executor configuration for a specific Vivado version."""
-        return self.vivado_executors.get(version)
+    def get_tool_executor(self, tool: str, version: str) -> Optional[ToolExecutor]:
+        """Get executor configuration for a specific tool and version."""
+        tool_executors = self.tools.get(tool, {})
+        return tool_executors.get(version)
 
 
 class DeviceInfo(FlexibleModel):
@@ -428,29 +431,43 @@ class ProjectInformation(FlexibleModel):
     project_information:
       project_name: my_project
       top_level_file_name: top_level
+      tool: vivado
+      tool_version: "2020.1"
       device_info:
         part_name: xc7z020clg400-1
         board_name: Arty_Z7_20
-      vivado_version:
-        year: "2020"
-        minor: "1"
     ```
     """
 
     project_name: str = Field(
-        description="Vivado project name. Used for .xpr file and output naming."
+        description="Tool project name. Used for project file and output naming."
     )
     top_level_file_name: str = Field(
         description="Top-level HDL module filename (without path or extension)."
     )
     device_info: DeviceInfo = Field(description="FPGA device and board configuration.")
-    vivado_version: VivadoVersion = Field(
-        description="Vivado version to use for this project."
+    tool: str = Field(
+        default="vivado",
+        description="EDA tool to use for this project (e.g., 'vivado').",
+    )
+    tool_version: str = Field(
+        description="Tool version string (e.g., '2020.1').",
     )
     top_level_generics: dict[str, Generic] = Field(
         default_factory=dict,
         description="Generic parameters for top-level module. Keys are generic names.",
     )
+
+    @property
+    def tool_version_year(self) -> str:
+        """Get the year/major component of the tool version (e.g., '2020' from '2020.1')."""
+        return self.tool_version.split(".")[0]
+
+    @property
+    def tool_version_minor(self) -> str:
+        """Get the minor component of the tool version (e.g., '1' from '2020.1')."""
+        parts = self.tool_version.split(".")
+        return parts[1] if len(parts) > 1 else "0"
 
 
 class Constraint(FlexibleModel):
@@ -577,9 +594,12 @@ class ProjectConfiguration(FlexibleModel):
         default=None,
         description="Project-specific hdldepends config path. Overrides global setting.",
     )
-    vivado_executors: Optional[dict[str, VivadoExecutor]] = Field(
+    tools: Optional[dict[str, dict[str, ToolExecutor]]] = Field(
         default=None,
-        description="Project-specific Vivado executors. Overrides global settings.",
+        description=(
+            "Project-specific tool executors. Overrides global settings. "
+            "Keyed by tool name then version."
+        ),
     )
     constraints: list[Constraint] = Field(
         default_factory=list,
@@ -610,48 +630,57 @@ class ProjectConfiguration(FlexibleModel):
         description="Configuration schema version.",
     )
 
-    def get_vivado_executor(self, global_config: GlobalConfiguration) -> VivadoExecutor:
-        """Get Vivado executor (project -> global lookup).
+    def get_tool_executor(self, global_config: GlobalConfiguration) -> ToolExecutor:
+        """Get tool executor (project -> global lookup).
+
+        Looks up the executor for the project's tool and version, checking
+        project-level tools first, then falling back to global tools.
 
         Args:
             global_config: Global configuration for executor lookup
 
         Returns:
-            VivadoExecutor for the project's Vivado version
+            ToolExecutor for the project's tool and version
 
         Raises:
-            ValueError: If no executor is configured for the required version
+            ValueError: If no executor is configured for the required tool/version
         """
-        version_str = self.project_information.vivado_version.full_version
+        tool = self.project_information.tool
+        version_str = self.project_information.tool_version
 
         # Check project-level first
-        if self.vivado_executors and version_str in self.vivado_executors:
-            return self.vivado_executors[version_str]
+        if self.tools:
+            tool_executors = self.tools.get(tool, {})
+            if version_str in tool_executors:
+                return tool_executors[version_str]
 
         # Check global config
-        if (
-            global_config.vivado_executors
-            and version_str in global_config.vivado_executors
-        ):
-            return global_config.vivado_executors[version_str]
+        global_executor = global_config.get_tool_executor(tool, version_str)
+        if global_executor:
+            return global_executor
 
         # No fallback - must be explicitly configured
         available = []
-        if self.vivado_executors:
-            available.extend(self.vivado_executors.keys())
-        if global_config.vivado_executors:
-            available.extend(global_config.vivado_executors.keys())
+        if self.tools and tool in self.tools:
+            available.extend(
+                f"{tool}/{v}" for v in self.tools[tool].keys()
+            )
+        if tool in global_config.tools:
+            available.extend(
+                f"{tool}/{v}" for v in global_config.tools[tool].keys()
+            )
 
         available_str = ", ".join(sorted(set(available))) if available else "none"
         raise ValueError(
-            f"No vivado_executor configured for version '{version_str}'.\n"
-            f"Available versions: {available_str}\n"
+            f"No executor configured for {tool} version '{version_str}'.\n"
+            f"Available: {available_str}\n"
             f"Add to hdlproject_global_config.yaml or project config:\n"
-            f"  vivado_executors:\n"
-            f'    "{version_str}":\n'
-            f"      setup:\n"
-            f'        - "source /path/to/Vivado/{version_str}/settings64.sh"\n'
-            f'      executable: "vivado"'
+            f"  tools:\n"
+            f"    {tool}:\n"
+            f'      "{version_str}":\n'
+            f"        setup:\n"
+            f'          - "source /path/to/{tool}/{version_str}/settings64.sh"\n'
+            f'        executable: "{tool}"'
         )
 
     def get_hdldepends_config(

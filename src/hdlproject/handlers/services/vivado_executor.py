@@ -110,7 +110,7 @@ class VivadoExecutorService:
         """
         project_logger = get_project_logger(resolved_config.project_name)
 
-        executor = resolved_config.vivado_executor
+        executor = resolved_config.executor
 
         # Build the vivado arguments
         tcl_script = get_tcl_script("project_workflow.tcl")
@@ -277,7 +277,7 @@ class VivadoExecutorService:
             True if successful
         """
         try:
-            executor = resolved_config.vivado_executor
+            executor = resolved_config.executor
 
             vivado_args = ["-mode", "gui", "-notrace", str(project_path)]
 
@@ -326,7 +326,7 @@ class VivadoExecutorService:
         Returns:
             ExecutionResult with success status
         """
-        executor = resolved_config.vivado_executor
+        executor = resolved_config.executor
         tcl_string = "; ".join(tcl_commands)
 
         vivado_args = [

@@ -38,14 +38,14 @@ class ProjectLoaderService:
         self,
         project_names: list[str],
         check_files: bool = True,
-        check_vivado_executor: bool = True,
+        check_executor: bool = True,
     ) -> list[ResolvedProjectConfig]:
         """Load and validate all projects.
 
         Args:
             project_names: List of project names to load
             check_files: Whether to validate that files exist
-            check_vivado_executor: Whether to validate that vivado_executor is configured
+            check_executor: Whether to validate that vivado_executor is configured
 
         Returns:
             List of ResolvedProjectConfig objects
@@ -67,7 +67,7 @@ class ProjectLoaderService:
         errors = self.validate_projects(
             configs,
             check_files=check_files,
-            check_vivado_executor=check_vivado_executor,
+            check_executor=check_executor,
         )
 
         if errors:
@@ -97,14 +97,14 @@ class ProjectLoaderService:
         self,
         configs: list[ResolvedProjectConfig],
         check_files: bool = True,
-        check_vivado_executor: bool = True,
+        check_executor: bool = True,
     ) -> list[str]:
         """Validate all resolved project configurations.
 
         Args:
             configs: List of ResolvedProjectConfig objects to validate
             check_files: Whether to check that files exist
-            check_vivado_executor: Whether to check that vivado_executor is configured
+            check_executor: Whether to check that vivado_executor is configured
 
         Returns:
             List of error messages (empty if all valid)
@@ -114,7 +114,7 @@ class ProjectLoaderService:
         for config in configs:
             errors = config.validate_for_execution(
                 check_files=check_files,
-                check_vivado_executor=check_vivado_executor,
+                check_executor=check_executor,
             )
             if errors:
                 all_errors.extend(

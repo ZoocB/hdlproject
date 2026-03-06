@@ -155,10 +155,16 @@ class ProjectManagementMenu:
             input("\nPress Enter to continue...")
 
     def _get_project_log_path(self, project_name: str, handler_name: str) -> Path:
-        """Get the expected path for a project log file"""
+        """Get the expected path for a project log file."""
+        # Search any .hdlproject-{tool} directory for the log
+        project_dir = self.app.project_dir / project_name
+        for d in project_dir.glob(".hdlproject-*"):
+            log_path = d / handler_name / "logs" / f"{handler_name}.log"
+            if log_path.exists():
+                return log_path
+        # Fallback to vivado (default tool)
         return (
-            self.app.project_dir
-            / project_name
+            project_dir
             / f".hdlproject-vivado/{handler_name}"
             / "logs"
             / f"{handler_name}.log"

@@ -74,7 +74,7 @@ class CompileOrderManager:
         self,
         top_level_file: str,
         output_file: Path,
-        vivado_version: Optional[str] = None,
+        tool_version: Optional[str] = None,
         device_part: Optional[str] = None,
     ) -> str:
         """
@@ -86,7 +86,7 @@ class CompileOrderManager:
         Args:
             top_level_file: Path to the top-level HDL file
             output_file: Path where compile order file will be created
-            vivado_version: Vivado version string (e.g., "2021.1")
+            tool_version: Vivado version string (e.g., "2021.1")
             device_part: Device part number (e.g., "xczu43dr-ffvg1517-2-i")
 
         Returns:
@@ -104,8 +104,8 @@ class CompileOrderManager:
         ]
 
         # Add tool-specific arguments if provided
-        if vivado_version:
-            parts.extend(["--x-tool-version", vivado_version])
+        if tool_version:
+            parts.extend(["--x-tool-version", tool_version])
 
         if device_part:
             parts.extend(["--x-device", device_part])
@@ -121,7 +121,7 @@ class CompileOrderManager:
         root_dir: Path,
         top_level_file: str,
         working_dir: Path,
-        vivado_version: Optional[str] = None,
+        tool_version: Optional[str] = None,
         device_part: Optional[str] = None,
         env: Optional[dict] = None,
     ) -> Path:
@@ -136,7 +136,7 @@ class CompileOrderManager:
             root_dir: Repository root directory
             top_level_file: Path to the top-level HDL file
             working_dir: Directory where compile order file will be created
-            vivado_version: Vivado version string (e.g., "2021.1")
+            tool_version: Vivado version string (e.g., "2021.1")
             device_part: Device part number (e.g., "xczu43dr-ffvg1517-2-i")
             env: Environment variables to use (should include XILINX_VIVADO)
 
@@ -155,7 +155,7 @@ class CompileOrderManager:
         command_str = self.get_command(
             top_level_file=top_level_file,
             output_file=output_file,
-            vivado_version=vivado_version,
+            tool_version=tool_version,
             device_part=device_part,
         )
         command = command_str.split()

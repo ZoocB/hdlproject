@@ -17,13 +17,27 @@ from hdlproject.models.models import (
     Constraint,
     BlockDesign,
     BuildConfiguration,
-    VivadoExecutor,
-    ProjectConfiguration,
+    ToolExecutor,
 )
 
 
 # Known operations for pre-computing paths
 KNOWN_OPERATIONS = ("build", "export", "open")
+
+# Base directory prefix — tool name is appended (e.g., ".hdlproject-vivado")
+HDLPROJECT_DIR_PREFIX = ".hdlproject"
+
+
+def get_hdlproject_dir_name(tool: str) -> str:
+    """Get the tool-specific output directory name.
+
+    Args:
+        tool: Tool name (e.g., 'vivado')
+
+    Returns:
+        Directory name like '.hdlproject-vivado'
+    """
+    return f"{HDLPROJECT_DIR_PREFIX}-{tool}"
 
 
 class ResolvedPaths(BaseModel):
@@ -33,7 +47,7 @@ class ResolvedPaths(BaseModel):
 
     repository_root: Path
     project_dir: Path
-    hdlproject_dir: Path  # project_dir / .hdlproject-vivado
+    hdlproject_dir: Path  # project_dir / .hdlproject-{tool}
     top_level_file_path: Optional[Path] = None
     hdldepends_config_path: Optional[Path] = None
     resolved_config_path: Optional[Path] = None  # set after export_to_disk
@@ -47,7 +61,7 @@ class ResolvedOperationPaths(BaseModel):
     operation: str
     operation_dir: Path
     logs_dir: Path
-    project_dir: Path  # Vivado .xpr location
+    project_dir: Path  # tool project location (e.g. .xpr for Vivado)
     bd_dir: Path
     xci_dir: Path
 
@@ -55,9 +69,9 @@ class ResolvedOperationPaths(BaseModel):
         """Get log file path for operation."""
         return self.logs_dir / f"{operation}.log"
 
-    def get_project_file(self, vivado_project_name: str) -> Path:
-        """Get path to Vivado project file (.xpr)."""
-        return self.project_dir / f"{vivado_project_name}.xpr"
+    def get_project_file(self, project_name: str) -> Path:
+        """Get path to tool project file (e.g. .xpr for Vivado)."""
+        return self.project_dir / f"{project_name}.xpr"
 
     def create_directories(self) -> None:
         """Create all operation directories."""
@@ -71,6 +85,9 @@ class ResolvedProjectConfig(BaseModel):
     Created by ConfigResolver from GlobalConfiguration + ProjectConfiguration.
     All paths are absolute, all merging is done, all derived values pre-computed.
     This replaces ProjectRuntime as the single object passed through the system.
+
+    The entire model is serialized to JSON on disk so that external tools
+    (e.g. TCL scripts) can read any value they need.
     """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -80,7 +97,10 @@ class ResolvedProjectConfig(BaseModel):
         description="Directory name, used for CLI selection and logging."
     )
     vivado_project_name: str = Field(
-        description="Vivado project name from config, used for .xpr file naming."
+        description="Tool project name from config, used for project file naming."
+    )
+    tool: str = Field(
+        description="EDA tool name (e.g., 'vivado')."
     )
 
     # === Pre-resolved paths ===
@@ -101,7 +121,9 @@ class ResolvedProjectConfig(BaseModel):
     environment_setup: Optional[dict[str, str]] = None
 
     # === Merged settings (global + project override) ===
-    vivado_executor: VivadoExecutor
+    executor: ToolExecutor = Field(
+        description="Resolved tool executor configuration (project overrides global)."
+    )
     compile_order_format: str = "json"
     default_cores: int = 2
     max_parallel_builds: Optional[int] = None
@@ -109,9 +131,9 @@ class ResolvedProjectConfig(BaseModel):
     # === Convenience properties ===
 
     @property
-    def vivado_version(self) -> str:
-        """Get the Vivado version string (e.g., '2020.1')."""
-        return self.project_information.vivado_version.full_version
+    def tool_version(self) -> str:
+        """Get the tool version string (e.g., '2020.1')."""
+        return self.project_information.tool_version
 
     @property
     def device_part(self) -> str:
@@ -157,7 +179,7 @@ class ResolvedProjectConfig(BaseModel):
         operation: str,
         cores: int = 1,
     ) -> list[str]:
-        """Get TCL script arguments for Vivado execution.
+        """Get TCL script arguments for tool execution.
 
         Args:
             mode: TCL script mode (build, open, export)
@@ -189,10 +211,12 @@ class ResolvedProjectConfig(BaseModel):
         ]
 
     def export_to_disk(self, output_dir: Path) -> Path:
-        """Export the resolved configuration as JSON for TCL scripts and debugging.
+        """Export the full resolved configuration as JSON.
 
-        Writes the project configuration portion (what TCL scripts need) to disk.
-        Sets paths.resolved_config_path.
+        Serializes the entire ResolvedProjectConfig to disk so that
+        external tools (TCL scripts, CI systems, etc.) have access to
+        all resolved values including paths, executor config, and
+        operation directories.
 
         Args:
             output_dir: Directory to save the JSON file
@@ -203,9 +227,11 @@ class ResolvedProjectConfig(BaseModel):
         output_dir.mkdir(parents=True, exist_ok=True)
         json_path = output_dir / "hdlproject_config_resolved.json"
 
-        # Build the config dict that TCL scripts expect
-        config = self._to_project_config()
-        config_dict = config.model_dump(exclude_unset=True, exclude_none=True)
+        # Serialize the full resolved config
+        config_dict = self.model_dump(
+            mode="json",
+            exclude_none=True,
+        )
 
         with open(json_path, "w") as f:
             json.dump(config_dict, f, indent=2, default=str)
@@ -213,33 +239,18 @@ class ResolvedProjectConfig(BaseModel):
         self.paths.resolved_config_path = json_path
         return json_path
 
-    def _to_project_config(self) -> ProjectConfiguration:
-        """Reconstruct a ProjectConfiguration from the resolved values.
-
-        Used for JSON export to maintain backwards compatibility with TCL scripts.
-        """
-        return ProjectConfiguration(
-            project_information=self.project_information,
-            constraints=self.constraints,
-            block_designs=self.block_designs,
-            synth_options=self.synth_options,
-            impl_options=self.impl_options,
-            build_configuration=self.build_configuration,
-            environment_setup=self.environment_setup,
-        )
-
     # === Validation ===
 
     def validate_for_execution(
         self,
         check_files: bool = True,
-        check_vivado_executor: bool = True,
+        check_executor: bool = True,
     ) -> list[str]:
         """Validate the resolved configuration is ready for execution.
 
         Args:
             check_files: Whether to check that files exist
-            check_vivado_executor: Whether to check vivado executor
+            check_executor: Whether to check tool executor
 
         Returns:
             List of validation error messages (empty if valid)
