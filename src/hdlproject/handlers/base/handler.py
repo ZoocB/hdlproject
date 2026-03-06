@@ -12,12 +12,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from hdlproject.runtime.context import (
     RuntimeEnvironment,
-    ProjectRuntime,
-    OperationPaths,
     ExecutionServices,
     ExecutionContext,
     SingleProjectExecution,
 )
+from hdlproject.models.resolved import ResolvedProjectConfig
 from hdlproject.handlers.base.operation_config import OperationConfig
 from hdlproject.handlers.services.project_loader import ProjectLoaderService
 from hdlproject.handlers.services.vivado_executor import VivadoExecutorService
@@ -82,19 +81,19 @@ class BaseHandler(ABC):
             options: Handler-specific options object (BuildHandlerOptions, etc.)
         """
         try:
-            # 1. Load all project runtimes
+            # 1. Load all resolved project configurations
             logger.info(f"Loading {len(projects)} project(s)")
-            project_runtimes = self.project_loader.load_projects(
+            resolved_configs = self.project_loader.load_projects(
                 projects,
                 check_files=True,
             )
 
             # 2. Setup project logging
-            for runtime in project_runtimes:
-                operation_paths = runtime.get_operation_paths(self.CONFIG.name)
+            for config in resolved_configs:
+                operation_paths = config.get_operation_paths(self.CONFIG.name)
                 operation_paths.create_directories()
                 log_path = operation_paths.get_log_file(self.CONFIG.name)
-                setup_project_log(runtime.project_name, log_path)
+                setup_project_log(config.project_name, log_path)
 
             # 3. Create status manager
             self.status_manager = StatusManager(
@@ -104,10 +103,10 @@ class BaseHandler(ABC):
             )
 
             # 3b. Set log file paths for status display
-            for runtime in project_runtimes:
-                operation_paths = runtime.get_operation_paths(self.CONFIG.name)
+            for config in resolved_configs:
+                operation_paths = config.get_operation_paths(self.CONFIG.name)
                 log_file = operation_paths.get_log_file(self.CONFIG.name)
-                self.status_manager.set_project_log_file(runtime.project_name, log_file)
+                self.status_manager.set_project_log_file(config.project_name, log_file)
 
             # 3c. Start the display
             self.status_manager.start()
@@ -122,7 +121,7 @@ class BaseHandler(ABC):
             # 5. Create execution context
             context = ExecutionContext(
                 environment=self.environment,
-                project_runtimes=project_runtimes,
+                resolved_configs=resolved_configs,
                 handler_options=options,
                 operation_config=self.CONFIG,
                 services=services,
@@ -137,19 +136,19 @@ class BaseHandler(ABC):
 
             # 8. Determine if we should run in parallel
             supports_parallel = self._get_supports_parallel()
-            should_parallelise = supports_parallel and len(project_runtimes) > 1
+            should_parallelise = supports_parallel and len(resolved_configs) > 1
 
             if should_parallelise:
                 max_workers = self._calculate_max_workers(context)
                 logger.info(
-                    f"Running {len(project_runtimes)} projects in parallel "
+                    f"Running {len(resolved_configs)} projects in parallel "
                     f"(max {max_workers} concurrent)"
                 )
                 results = self._execute_parallel(context, max_workers)
             else:
-                if not supports_parallel and len(project_runtimes) > 1:
+                if not supports_parallel and len(resolved_configs) > 1:
                     logger.info(
-                        f"Running {len(project_runtimes)} projects sequentially "
+                        f"Running {len(resolved_configs)} projects sequentially "
                         "(parallel not supported)"
                     )
                 results = self._execute_sequential(context)
@@ -166,25 +165,25 @@ class BaseHandler(ABC):
         """Execute projects sequentially."""
         results = {}
 
-        for runtime in context.project_runtimes:
-            single_ctx = self._create_single_execution(context, runtime)
+        for config in context.resolved_configs:
+            single_ctx = self._create_single_execution(context, config)
 
             try:
                 self.prepare(single_ctx)
                 success = self.execute_single(single_ctx)
-                results[runtime.project_name] = success
+                results[config.project_name] = success
 
                 if not success:
-                    error_msg = f"Operation failed for {runtime.project_name}"
+                    error_msg = f"Operation failed for {config.project_name}"
                     if not self.interactive:
                         raise RuntimeError(error_msg)
                     else:
                         logger.error(error_msg)
 
             except Exception as e:
-                results[runtime.project_name] = False
+                results[config.project_name] = False
                 logger.error(
-                    f"Project {runtime.project_name} failed: {e}",
+                    f"Project {config.project_name} failed: {e}",
                     exc_info=True,
                 )
                 if not self.interactive:
@@ -203,13 +202,13 @@ class BaseHandler(ABC):
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_project = {}
 
-            for runtime in context.project_runtimes:
+            for config in context.resolved_configs:
                 future = executor.submit(
                     self._execute_single_project,
                     context,
-                    runtime,
+                    config,
                 )
-                future_to_project[future] = runtime.project_name
+                future_to_project[future] = config.project_name
 
             for future in as_completed(future_to_project):
                 project_name = future_to_project[future]
@@ -237,10 +236,10 @@ class BaseHandler(ABC):
     def _execute_single_project(
         self,
         context: ExecutionContext,
-        runtime: ProjectRuntime,
+        config: ResolvedProjectConfig,
     ) -> bool:
         """Execute a single project (used by parallel executor)."""
-        single_ctx = self._create_single_execution(context, runtime)
+        single_ctx = self._create_single_execution(context, config)
 
         try:
             self.prepare(single_ctx)
@@ -248,7 +247,7 @@ class BaseHandler(ABC):
 
         except Exception as e:
             logger.error(
-                f"Project {runtime.project_name} failed: {e}",
+                f"Project {config.project_name} failed: {e}",
                 exc_info=True,
             )
             return False
@@ -256,18 +255,18 @@ class BaseHandler(ABC):
     def _create_single_execution(
         self,
         context: ExecutionContext,
-        runtime: ProjectRuntime,
+        config: ResolvedProjectConfig,
     ) -> SingleProjectExecution:
         """Create a SingleProjectExecution context."""
         # Get operation paths
-        operation_paths = runtime.get_operation_paths(self.CONFIG.name)
+        operation_paths = config.get_operation_paths(self.CONFIG.name)
         operation_paths.create_directories()
 
-        # Export resolved config
-        runtime.export_resolved_config(operation_paths.operation_dir)
+        # Export resolved config to disk
+        config.export_to_disk(operation_paths.operation_dir)
 
         # Create compile order service for this project
-        compile_order_service = self._create_compile_order_service(runtime)
+        compile_order_service = self._create_compile_order_service(config)
 
         # Create services with project-specific compile order service
         services = ExecutionServices(
@@ -277,7 +276,7 @@ class BaseHandler(ABC):
         )
 
         return SingleProjectExecution(
-            runtime=runtime,
+            resolved_config=config,
             operation_paths=operation_paths,
             handler_options=context.handler_options,
             operation_config=context.operation_config,
@@ -286,17 +285,17 @@ class BaseHandler(ABC):
 
     def _create_compile_order_service(
         self,
-        runtime: ProjectRuntime,
+        config: ResolvedProjectConfig,
     ) -> CompileOrderService:
         """Create compile order service for a specific project."""
-        compile_format = self.environment.global_config.compile_order_format
+        compile_format = config.compile_order_format
 
         if not compile_format:
             logger.debug("No compile order format specified")
             return CompileOrderService(None, None)
 
         try:
-            hdldepends_path = runtime.get_hdldepends_path()
+            hdldepends_path = config.paths.hdldepends_config_path
             if hdldepends_path:
                 from hdlproject.core.compile_order import CompileOrderManager
 
@@ -304,14 +303,14 @@ class BaseHandler(ABC):
                     output_format=compile_format,
                     hdldepends_config_path=hdldepends_path,
                 )
-                return CompileOrderService(manager, runtime)
+                return CompileOrderService(manager, config)
             else:
                 return CompileOrderService(None, None)
 
         except Exception as e:
             logger.warning(
                 f"Could not create compile order manager for "
-                f"{runtime.project_name}: {e}"
+                f"{config.project_name}: {e}"
             )
             return CompileOrderService(None, None)
 
@@ -321,10 +320,10 @@ class BaseHandler(ABC):
             cores_per_project = context.handler_options.cores
             total_cores = psutil.cpu_count(logical=True)
             max_workers = max(1, total_cores // cores_per_project)
-            return min(max_workers, len(context.project_runtimes))
+            return min(max_workers, len(context.resolved_configs))
         else:
             default_max = self.environment.global_config.max_parallel_builds or 4
-            return min(default_max, len(context.project_runtimes))
+            return min(default_max, len(context.resolved_configs))
 
     def _get_supports_parallel(self) -> bool:
         """Check if this handler supports parallel execution."""
@@ -344,8 +343,8 @@ class BaseHandler(ABC):
         """Clean operation directories for all projects."""
         logger.info("Cleaning operation directories")
 
-        for runtime in context.project_runtimes:
-            operation_paths = runtime.get_operation_paths(self.CONFIG.name)
+        for config in context.resolved_configs:
+            operation_paths = config.get_operation_paths(self.CONFIG.name)
             operation_dir = operation_paths.operation_dir
 
             if operation_dir.exists():

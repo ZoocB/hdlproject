@@ -5,7 +5,7 @@ configuration to properly set up the environment. Supports both local
 installations and Docker-based execution.
 
 Execution flow:
-    [shell] → [setup] → [extra_commands (e.g., hdldepends)] → [executable (vivado)]
+    [shell] -> [setup] -> [extra_commands (e.g., hdldepends)] -> [executable (vivado)]
 """
 
 import os
@@ -15,8 +15,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional
 
-from hdlproject.models.models import GlobalConfiguration
-from hdlproject.runtime.context import ProjectRuntime, OperationPaths
+from hdlproject.models.resolved import ResolvedProjectConfig, ResolvedOperationPaths
 from hdlproject.core.output_processor import VivadoOutputProcessor
 from hdlproject.utils.vivado_output_parser import VivadoOutputParser, StepPattern
 from hdlproject.utils.resources import get_tcl_script
@@ -37,9 +36,10 @@ class ExecutionResult:
 class VivadoExecutorService:
     """Service for executing Vivado processes.
 
-    Uses the VivadoExecutor configuration to properly set up the environment
-    before running Vivado commands. Supports injecting additional commands
-    (like hdldepends) that run before Vivado in the same shell session.
+    Uses the VivadoExecutor configuration from the ResolvedProjectConfig
+    to properly set up the environment before running Vivado commands.
+    Supports injecting additional commands (like hdldepends) that run
+    before Vivado in the same shell session.
     """
 
     def _prepare_popen_args(
@@ -47,17 +47,8 @@ class VivadoExecutorService:
         shell_args: list[str],
         stdin_content: Optional[str],
     ) -> list[str]:
-        """Prepare arguments for Popen based on execution mode.
-
-        Args:
-            shell_args: Shell arguments from build_command()
-            stdin_content: Heredoc content if any
-
-        Returns:
-            Arguments list for subprocess.Popen
-        """
+        """Prepare arguments for Popen based on execution mode."""
         if stdin_content:
-            # Heredoc mode - split the invoke command
             return shlex.split(shell_args[0])
         return shell_args
 
@@ -71,20 +62,7 @@ class VivadoExecutorService:
         status_display,
         exit_code: int,
     ) -> ExecutionResult:
-        """Handle execution failure with consistent logging and status updates.
-
-        Args:
-            project_name: Name of the project for logging
-            error_msg: Error message to log
-            log_path: Path to write error log
-            shell_args: Command that was executed
-            stdin_content: Heredoc content if any
-            status_display: Status display to update (may be None)
-            exit_code: Exit code to return
-
-        Returns:
-            ExecutionResult with failure status
-        """
+        """Handle execution failure with consistent logging and status updates."""
         project_logger = get_project_logger(project_name)
         project_logger.error(error_msg)
 
@@ -95,7 +73,7 @@ class VivadoExecutorService:
                 status_display.complete_project(
                     project_name,
                     success=False,
-                    message=error_msg[:100],  # Truncate for display
+                    message=error_msg[:100],
                 )
             except Exception:
                 pass
@@ -108,9 +86,8 @@ class VivadoExecutorService:
 
     def execute(
         self,
-        runtime: ProjectRuntime,
-        global_config: GlobalConfiguration,
-        operation_paths: OperationPaths,
+        resolved_config: ResolvedProjectConfig,
+        operation_paths: ResolvedOperationPaths,
         tcl_mode: str,
         step_patterns: list[StepPattern],
         status_display=None,
@@ -120,8 +97,7 @@ class VivadoExecutorService:
         """Execute Vivado for a project.
 
         Args:
-            runtime: Project runtime with configuration
-            global_config: Global configuration for executor lookup
+            resolved_config: Fully resolved project configuration
             operation_paths: Paths for this operation
             tcl_mode: TCL script mode (build, open, export, etc.)
             step_patterns: Patterns for parsing output
@@ -132,14 +108,15 @@ class VivadoExecutorService:
         Returns:
             ExecutionResult with success status and errors
         """
-        project_logger = get_project_logger(runtime.project_name)
+        project_logger = get_project_logger(resolved_config.project_name)
 
-        # Get Vivado executor configuration
-        executor = runtime.config.get_vivado_executor(global_config)
+        executor = resolved_config.vivado_executor
 
         # Build the vivado arguments
         tcl_script = get_tcl_script("project_workflow.tcl")
-        tcl_args = runtime.get_tcl_arguments(tcl_mode, operation_paths, cores)
+        tcl_args = resolved_config.get_tcl_arguments(
+            tcl_mode, operation_paths.operation, cores
+        )
 
         vivado_args = [
             "-mode",
@@ -155,7 +132,7 @@ class VivadoExecutorService:
         shell_args, stdin_content = executor.build_command(
             executable_args=vivado_args,
             extra_commands=extra_commands,
-            repository_root=runtime.repository_root,
+            repository_root=resolved_config.repository_root,
         )
 
         # Create output parser
@@ -164,7 +141,7 @@ class VivadoExecutorService:
         # Setup output processor
         log_path = operation_paths.get_log_file(tcl_mode)
         processor = VivadoOutputProcessor(
-            project_name=runtime.project_name,
+            project_name=resolved_config.project_name,
             operation=tcl_mode,
             parser=parser,
             status_display=status_display,
@@ -223,7 +200,7 @@ class VivadoExecutorService:
                 if status_display:
                     try:
                         status_display.complete_project(
-                            runtime.project_name,
+                            resolved_config.project_name,
                             success=False,
                             message=error_lines[0] if error_lines else "Unknown error",
                         )
@@ -238,7 +215,7 @@ class VivadoExecutorService:
 
         except FileNotFoundError as e:
             return self._handle_execution_failure(
-                project_name=runtime.project_name,
+                project_name=resolved_config.project_name,
                 error_msg=f"Command not found: {e.filename}",
                 log_path=log_path,
                 shell_args=shell_args,
@@ -249,7 +226,7 @@ class VivadoExecutorService:
 
         except Exception as e:
             return self._handle_execution_failure(
-                project_name=runtime.project_name,
+                project_name=resolved_config.project_name,
                 error_msg=f"Vivado execution failed: {e}",
                 log_path=log_path,
                 shell_args=shell_args,
@@ -265,10 +242,7 @@ class VivadoExecutorService:
         shell_args: list[str],
         stdin_content: Optional[str],
     ) -> None:
-        """Write error information to log file for debugging.
-
-        Appends to existing log or creates new one if it doesn't exist.
-        """
+        """Write error information to log file for debugging."""
         try:
             log_path.parent.mkdir(parents=True, exist_ok=True)
             mode = "a" if log_path.exists() else "w"
@@ -290,28 +264,26 @@ class VivadoExecutorService:
 
     def execute_gui(
         self,
-        runtime: ProjectRuntime,
-        global_config: GlobalConfiguration,
+        resolved_config: ResolvedProjectConfig,
         project_path: Path,
     ) -> bool:
         """Open Vivado GUI with existing project.
 
         Args:
-            runtime: Project runtime with configuration
-            global_config: Global configuration for executor lookup
+            resolved_config: Fully resolved project configuration
             project_path: Path to .xpr file
 
         Returns:
             True if successful
         """
         try:
-            executor = runtime.config.get_vivado_executor(global_config)
+            executor = resolved_config.vivado_executor
 
             vivado_args = ["-mode", "gui", "-notrace", str(project_path)]
 
             shell_args, stdin_content = executor.build_command(
                 executable_args=vivado_args,
-                repository_root=runtime.repository_root,
+                repository_root=resolved_config.repository_root,
             )
 
             logger.info(f"Opening Vivado GUI: {' '.join(shell_args)}")
@@ -340,23 +312,21 @@ class VivadoExecutorService:
 
     def execute_batch_command(
         self,
-        runtime: ProjectRuntime,
-        global_config: GlobalConfiguration,
+        resolved_config: ResolvedProjectConfig,
         tcl_commands: list[str],
         working_dir: Path,
     ) -> ExecutionResult:
         """Execute arbitrary TCL commands in batch mode.
 
         Args:
-            runtime: Project runtime with configuration
-            global_config: Global configuration for executor lookup
+            resolved_config: Fully resolved project configuration
             tcl_commands: List of TCL commands to execute
             working_dir: Working directory for execution
 
         Returns:
             ExecutionResult with success status
         """
-        executor = runtime.config.get_vivado_executor(global_config)
+        executor = resolved_config.vivado_executor
         tcl_string = "; ".join(tcl_commands)
 
         vivado_args = [
@@ -371,7 +341,7 @@ class VivadoExecutorService:
 
         shell_args, stdin_content = executor.build_command(
             executable_args=vivado_args,
-            repository_root=runtime.repository_root,
+            repository_root=resolved_config.repository_root,
         )
 
         try:
