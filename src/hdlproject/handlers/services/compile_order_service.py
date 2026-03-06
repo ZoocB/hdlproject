@@ -54,7 +54,7 @@ class CompileOrderService:
         if not self.resolved_config:
             return False
 
-        return self.resolved_config.vivado_executor.shell is not None
+        return self.resolved_config.executor.shell is not None
 
     def prepare_for_operation(
         self, operation_paths: "ResolvedOperationPaths"
@@ -129,7 +129,7 @@ class CompileOrderService:
         return self.manager.get_command(
             top_level_file=str(self.resolved_config.paths.top_level_file_path),
             output_file=output_file,
-            vivado_version=self.resolved_config.vivado_version,
+            tool_version=self.resolved_config.tool_version,
             device_part=self.resolved_config.device_part,
         )
 
@@ -160,21 +160,21 @@ class CompileOrderService:
         project_logger = get_project_logger(self.resolved_config.project_name)
 
         try:
-            vivado_version = self.resolved_config.vivado_version
+            tool_version = self.resolved_config.tool_version
             device_part = self.resolved_config.device_part
 
             project_logger.debug(
-                f"Generating compile order with Vivado {vivado_version} "
-                f"and device {device_part}"
+                f"Generating compile order with {self.resolved_config.tool} "
+                f"{tool_version} and device {device_part}"
             )
 
-            env = self._get_vivado_environment()
+            env = self._get_tool_environment()
 
             compile_order_path = self.manager.generate(
                 root_dir=self.resolved_config.repository_root,
                 top_level_file=str(self.resolved_config.paths.top_level_file_path),
                 working_dir=operation_paths.operation_dir,
-                vivado_version=vivado_version,
+                tool_version=tool_version,
                 device_part=device_part,
                 env=env,
             )
@@ -189,14 +189,14 @@ class CompileOrderService:
             project_logger.warning(f"Compile order generation failed: {e}")
             return None
 
-    def _get_vivado_environment(self) -> dict:
-        """Get environment with Vivado settings.
+    def _get_tool_environment(self) -> dict:
+        """Get environment with tool settings.
 
         Note: Only called from generate() which already verified is_available().
         """
         env = os.environ.copy()
 
-        executor = self.resolved_config.vivado_executor
+        executor = self.resolved_config.executor
         env_command = executor.get_environment_command()
         if not env_command:
             return env
@@ -214,9 +214,9 @@ class CompileOrderService:
                     key, value = line.split("=", 1)
                     env[key] = value
 
-            logger.debug("Successfully set up Vivado environment")
+            logger.debug("Successfully set up tool environment")
 
         except subprocess.CalledProcessError as e:
-            logger.warning(f"Failed to set up Vivado environment: {e}")
+            logger.warning(f"Failed to set up tool environment: {e}")
 
         return env

@@ -71,16 +71,16 @@ class PublishHandler(BaseHandler):
         print("=" * 50)
         print(f"Projects to publish: {len(context.resolved_configs)}")
 
-        # Group by Vivado version
+        # Group by tool and version
         version_groups = {}
         for name, config in self.project_configs.items():
-            version = config.vivado_version
-            if version not in version_groups:
-                version_groups[version] = []
-            version_groups[version].append(name)
+            label = f"{config.tool} {config.tool_version}"
+            if label not in version_groups:
+                version_groups[label] = []
+            version_groups[label].append(name)
 
-        for version, projects in sorted(version_groups.items()):
-            print(f"\nVivado {version}:")
+        for label, projects in sorted(version_groups.items()):
+            print(f"\n{label}:")
             for project in projects:
                 print(f"  - {project}")
 
@@ -99,12 +99,12 @@ class PublishHandler(BaseHandler):
     def execute(self, projects: list[str], options: PublishHandlerOptions) -> None:
         """Override execute to handle git operations on all projects."""
         try:
-            # Load projects without file or vivado_executor validation
-            # (publish doesn't need to execute Vivado, just read project configs)
+            # Load projects without file or executor validation
+            # (publish doesn't need to execute tools, just read project configs)
             resolved_configs = self.project_loader.load_projects(
                 projects,
                 check_files=False,
-                check_vivado_executor=False,
+                check_executor=False,
             )
 
             # Setup jenkins directory
@@ -325,7 +325,10 @@ class PublishHandler(BaseHandler):
         for project in projects:
             if project in self.project_configs:
                 config = self.project_configs[project]
-                project_data[project] = {"vivado_version": config.vivado_version}
+                project_data[project] = {
+                    "tool": config.tool,
+                    "tool_version": config.tool_version,
+                }
 
         build_data = {"token": token, "projects": project_data}
 

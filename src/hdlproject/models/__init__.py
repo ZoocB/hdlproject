@@ -3,7 +3,8 @@
 from hdlproject.models.models import (
     FlexibleModel,
     VivadoVersion,
-    VivadoExecutor,
+    ToolExecutor,
+    VivadoExecutor,  # backwards-compatible alias for ToolExecutor
     GlobalConfiguration,
     DeviceInfo,
     Generic,
@@ -23,6 +24,7 @@ from hdlproject.models.resolved import (
 __all__ = [
     "FlexibleModel",
     "VivadoVersion",
+    "ToolExecutor",
     "VivadoExecutor",
     "GlobalConfiguration",
     "DeviceInfo",

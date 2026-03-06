@@ -60,10 +60,12 @@ class ConfigLoader:
                 f"Global configuration file not found: {config_path}\n"
                 f"Please create {self.GLOBAL_CONFIG_FILENAME} at repository root with:\n"
                 f'  project_dir: "projects"\n'
-                f"  vivado_executors:\n"
-                f'    "2020.1":\n'
-                f"      commands:\n"
-                f'        - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"'
+                f"  tools:\n"
+                f"    vivado:\n"
+                f'      "2020.1":\n'
+                f"        setup:\n"
+                f'          - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"\n'
+                f'        executable: "vivado"'
             )
 
         try:
