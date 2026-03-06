@@ -12,7 +12,7 @@ from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from hdlproject.core.compile_order import CompileOrderManager
-    from hdlproject.runtime.context import ProjectRuntime, OperationPaths
+    from hdlproject.models.resolved import ResolvedProjectConfig, ResolvedOperationPaths
 
 from hdlproject.utils.logging_manager import get_logger, get_project_logger
 
@@ -30,20 +30,20 @@ class CompileOrderService:
     def __init__(
         self,
         compile_manager: Optional["CompileOrderManager"],
-        runtime: Optional["ProjectRuntime"],
+        resolved_config: Optional["ResolvedProjectConfig"],
     ):
         """Initialise the service.
 
         Args:
             compile_manager: CompileOrderManager instance or None if not available
-            runtime: ProjectRuntime for accessing config (or None)
+            resolved_config: ResolvedProjectConfig for accessing config (or None)
         """
         self.manager = compile_manager
-        self.runtime = runtime
+        self.resolved_config = resolved_config
 
     def is_available(self) -> bool:
         """Check if compile order generation is available."""
-        return self.manager is not None and self.runtime is not None
+        return self.manager is not None and self.resolved_config is not None
 
     def requires_shell_execution(self) -> bool:
         """Check if hdldepends must run in the executor's shell context.
@@ -51,16 +51,14 @@ class CompileOrderService:
         Returns True for Docker/custom shell setups where we can't capture
         environment variables locally.
         """
-        if not self.runtime or not self.runtime._global_config:
+        if not self.resolved_config:
             return False
 
-        try:
-            executor = self.runtime.get_vivado_executor()
-            return executor.shell is not None
-        except ValueError:
-            return False
+        return self.resolved_config.vivado_executor.shell is not None
 
-    def prepare_for_operation(self, operation_paths: "OperationPaths") -> None:
+    def prepare_for_operation(
+        self, operation_paths: "ResolvedOperationPaths"
+    ) -> None:
         """Prepare compile order for an operation.
 
         For local setups: generates compile order immediately.
@@ -73,7 +71,7 @@ class CompileOrderService:
             logger.debug("Compile order service not available")
             return
 
-        project_logger = get_project_logger(self.runtime.project_name)
+        project_logger = get_project_logger(self.resolved_config.project_name)
 
         if self.requires_shell_execution():
             project_logger.debug(
@@ -83,7 +81,7 @@ class CompileOrderService:
             self.generate(operation_paths)
 
     def get_extra_commands(
-        self, operation_paths: "OperationPaths"
+        self, operation_paths: "ResolvedOperationPaths"
     ) -> Optional[list[str]]:
         """Get extra commands to inject into shell execution.
 
@@ -100,13 +98,15 @@ class CompileOrderService:
 
         hdldepends_cmd = self.get_command(operation_paths)
         if hdldepends_cmd:
-            project_logger = get_project_logger(self.runtime.project_name)
+            project_logger = get_project_logger(self.resolved_config.project_name)
             project_logger.debug(f"Adding hdldepends to shell: {hdldepends_cmd}")
             return [hdldepends_cmd]
 
         return None
 
-    def get_command(self, operation_paths: "OperationPaths") -> Optional[str]:
+    def get_command(
+        self, operation_paths: "ResolvedOperationPaths"
+    ) -> Optional[str]:
         """Get the hdldepends command string.
 
         Use this when hdldepends needs to run in the same shell context
@@ -127,13 +127,15 @@ class CompileOrderService:
         )
 
         return self.manager.get_command(
-            top_level_file=str(self.runtime.top_level_file_path),
+            top_level_file=str(self.resolved_config.paths.top_level_file_path),
             output_file=output_file,
-            vivado_version=self.runtime.vivado_version,
-            device_part=self.runtime.device_part,
+            vivado_version=self.resolved_config.vivado_version,
+            device_part=self.resolved_config.device_part,
         )
 
-    def generate(self, operation_paths: "OperationPaths") -> Optional[Path]:
+    def generate(
+        self, operation_paths: "ResolvedOperationPaths"
+    ) -> Optional[Path]:
         """Generate compile order for the project (local execution).
 
         This executes hdldepends directly in a subprocess with environment
@@ -155,11 +157,11 @@ class CompileOrderService:
             logger.debug("Compile order requires shell execution - use get_command()")
             return None
 
-        project_logger = get_project_logger(self.runtime.project_name)
+        project_logger = get_project_logger(self.resolved_config.project_name)
 
         try:
-            vivado_version = self.runtime.vivado_version
-            device_part = self.runtime.device_part
+            vivado_version = self.resolved_config.vivado_version
+            device_part = self.resolved_config.device_part
 
             project_logger.debug(
                 f"Generating compile order with Vivado {vivado_version} "
@@ -169,8 +171,8 @@ class CompileOrderService:
             env = self._get_vivado_environment()
 
             compile_order_path = self.manager.generate(
-                root_dir=self.runtime.repository_root,
-                top_level_file=str(self.runtime.top_level_file_path),
+                root_dir=self.resolved_config.repository_root,
+                top_level_file=str(self.resolved_config.paths.top_level_file_path),
                 working_dir=operation_paths.operation_dir,
                 vivado_version=vivado_version,
                 device_part=device_part,
@@ -179,7 +181,6 @@ class CompileOrderService:
 
             if compile_order_path:
                 project_logger.info(f"Generated compile order: {compile_order_path}")
-                self.runtime.compile_order_path = compile_order_path
                 return compile_order_path
 
             return None
@@ -195,11 +196,7 @@ class CompileOrderService:
         """
         env = os.environ.copy()
 
-        try:
-            executor = self.runtime.get_vivado_executor()
-        except ValueError:
-            return env
-
+        executor = self.resolved_config.vivado_executor
         env_command = executor.get_environment_command()
         if not env_command:
             return env

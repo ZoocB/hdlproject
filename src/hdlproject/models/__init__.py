@@ -14,6 +14,11 @@ from hdlproject.models.models import (
     BuildConfiguration,
     ProjectConfiguration,
 )
+from hdlproject.models.resolved import (
+    ResolvedProjectConfig,
+    ResolvedPaths,
+    ResolvedOperationPaths,
+)
 
 __all__ = [
     "FlexibleModel",
@@ -28,4 +33,7 @@ __all__ = [
     "WriteHwPlatformOptions",
     "BuildConfiguration",
     "ProjectConfiguration",
+    "ResolvedProjectConfig",
+    "ResolvedPaths",
+    "ResolvedOperationPaths",
 ]

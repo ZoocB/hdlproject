@@ -2,14 +2,12 @@
 """Service for loading and validating project configurations.
 
 This module provides a service layer for loading projects using the
-ConfigLoader and returning ProjectRuntime objects.
+ConfigLoader and returning ResolvedProjectConfig objects.
 """
 
-from typing import Optional
-
 from hdlproject.models.models import GlobalConfiguration
+from hdlproject.models.resolved import ResolvedProjectConfig
 from hdlproject.config.loader import ConfigLoader
-from hdlproject.runtime.context import ProjectRuntime
 from hdlproject.utils.logging_manager import get_logger
 
 logger = get_logger(__name__)
@@ -18,8 +16,8 @@ logger = get_logger(__name__)
 class ProjectLoaderService:
     """Service for loading and validating project configurations.
 
-    Uses ConfigLoader to load projects and creates ProjectRuntime objects
-    ready for execution.
+    Uses ConfigLoader to resolve projects and creates ResolvedProjectConfig
+    objects ready for execution.
     """
 
     def __init__(
@@ -41,7 +39,7 @@ class ProjectLoaderService:
         project_names: list[str],
         check_files: bool = True,
         check_vivado_executor: bool = True,
-    ) -> list[ProjectRuntime]:
+    ) -> list[ResolvedProjectConfig]:
         """Load and validate all projects.
 
         Args:
@@ -50,24 +48,24 @@ class ProjectLoaderService:
             check_vivado_executor: Whether to validate that vivado_executor is configured
 
         Returns:
-            List of ProjectRuntime objects
+            List of ResolvedProjectConfig objects
 
         Raises:
             RuntimeError: If any project fails to load or validate
         """
-        runtimes = []
+        configs = []
 
         for project_name in project_names:
             try:
-                runtime = self.load_single_project(project_name)
-                runtimes.append(runtime)
+                resolved = self.load_single_project(project_name)
+                configs.append(resolved)
             except Exception as e:
                 logger.error(f"Failed to load project '{project_name}': {e}")
                 raise RuntimeError(f"Project loading failed: {project_name}") from e
 
         # Validate all projects
         errors = self.validate_projects(
-            runtimes,
+            configs,
             check_files=check_files,
             check_vivado_executor=check_vivado_executor,
         )
@@ -76,37 +74,35 @@ class ProjectLoaderService:
             error_msg = "Project validation failed:\n" + "\n".join(
                 f"  - {e}" for e in errors
             )
-            # Log before raising so error is visible even if exception is caught silently
             logger.error(error_msg)
             raise RuntimeError(error_msg)
 
-        return runtimes
+        return configs
 
-    def load_single_project(self, project_name: str) -> ProjectRuntime:
-        """Load configuration for a single project.
+    def load_single_project(self, project_name: str) -> ResolvedProjectConfig:
+        """Load and resolve configuration for a single project.
 
         Args:
             project_name: Name of project to load
 
         Returns:
-            ProjectRuntime with loaded configuration
+            ResolvedProjectConfig with fully resolved configuration
         """
-        runtime = self.config_loader.create_project_runtime(
+        return self.config_loader.resolve_project_config(
             project_name,
             self.global_config,
         )
-        return runtime
 
     def validate_projects(
         self,
-        runtimes: list[ProjectRuntime],
+        configs: list[ResolvedProjectConfig],
         check_files: bool = True,
         check_vivado_executor: bool = True,
     ) -> list[str]:
-        """Validate all project runtimes.
+        """Validate all resolved project configurations.
 
         Args:
-            runtimes: List of ProjectRuntime objects to validate
+            configs: List of ResolvedProjectConfig objects to validate
             check_files: Whether to check that files exist
             check_vivado_executor: Whether to check that vivado_executor is configured
 
@@ -115,14 +111,14 @@ class ProjectLoaderService:
         """
         all_errors = []
 
-        for runtime in runtimes:
-            errors = runtime.validate(
+        for config in configs:
+            errors = config.validate_for_execution(
                 check_files=check_files,
                 check_vivado_executor=check_vivado_executor,
             )
             if errors:
                 all_errors.extend(
-                    [f"{runtime.project_name}: {error}" for error in errors]
+                    [f"{config.project_name}: {error}" for error in errors]
                 )
 
         return all_errors

@@ -11,6 +11,7 @@ from hdlproject.handlers.base.handler import BaseHandler
 from hdlproject.handlers.base.operation_config import OperationConfig
 from hdlproject.handlers.registry import HandlerInfo, register_handler
 from hdlproject.runtime.context import ExecutionContext, SingleProjectExecution
+from hdlproject.models.resolved import ResolvedProjectConfig
 from hdlproject.utils.vivado_output_parser import StepPattern
 from hdlproject.utils.logging_manager import get_project_logger
 
@@ -88,12 +89,12 @@ class OpenProjectHandler(BaseHandler):
         print("\n" + "=" * 50)
         print("Open Configuration")
         print("=" * 50)
-        print(f"Projects: {len(context.project_runtimes)}")
+        print(f"Projects: {len(context.resolved_configs)}")
         print(f"Mode: {context.handler_options.mode}")
         print(f"Clean: {'Yes' if context.handler_options.clean else 'No'}")
         print("\nProjects to open:")
-        for runtime in context.project_runtimes:
-            print(f"  - {runtime.project_name}")
+        for config in context.resolved_configs:
+            print(f"  - {config.project_name}")
         print("=" * 50 + "\n")
 
     def prepare(self, context: SingleProjectExecution) -> None:
@@ -119,8 +120,7 @@ class OpenProjectHandler(BaseHandler):
         )
 
         result = context.services.vivado_executor.execute(
-            runtime=context.runtime,
-            global_config=self.environment.global_config,
+            resolved_config=context.resolved_config,
             operation_paths=context.operation_paths,
             tcl_mode=self.CONFIG.tcl_mode,
             step_patterns=self.CONFIG.step_patterns,
@@ -134,7 +134,7 @@ class OpenProjectHandler(BaseHandler):
         project_logger = get_project_logger(context.project_name)
 
         # Find the build project
-        xpr_path = self._find_build_project(context.runtime)
+        xpr_path = self._find_build_project(context.resolved_config)
         if not xpr_path:
             project_logger.error(
                 f"Build project not found for {context.project_name}. "
@@ -148,8 +148,7 @@ class OpenProjectHandler(BaseHandler):
 
         # Open GUI
         success = context.services.vivado_executor.execute_gui(
-            runtime=context.runtime,
-            global_config=self.environment.global_config,
+            resolved_config=context.resolved_config,
             project_path=xpr_path,
         )
 
@@ -161,12 +160,14 @@ class OpenProjectHandler(BaseHandler):
 
         return success
 
-    def _find_build_project(self, runtime) -> Optional[Path]:
+    def _find_build_project(
+        self, config: ResolvedProjectConfig
+    ) -> Optional[Path]:
         """Find existing build project .xpr file."""
         # Check in build operation directory
-        build_paths = runtime.get_operation_paths("build")
+        build_paths = config.get_operation_paths("build")
         # Use vivado_project_name - the .xpr is named after the YAML project name
-        xpr_path = build_paths.get_project_file(runtime.vivado_project_name)
+        xpr_path = build_paths.get_project_file(config.vivado_project_name)
 
         if xpr_path.exists():
             return xpr_path

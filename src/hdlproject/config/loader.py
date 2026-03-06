@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import Optional
 
 from hdlproject.models.models import GlobalConfiguration, ProjectConfiguration
+from hdlproject.models.resolved import ResolvedProjectConfig
 from hdlproject.config.config_resolver import YAMLConfigLoader
-from hdlproject.runtime.context import RuntimeEnvironment, ProjectRuntime
+from hdlproject.config.resolver import ConfigResolver
+from hdlproject.runtime.context import RuntimeEnvironment
 from hdlproject.utils.logging_manager import get_logger
 
 logger = get_logger(__name__)
@@ -152,43 +154,45 @@ class ConfigLoader:
             vivado_location=vivado_location,
         )
 
-    def create_project_runtime(
+    def resolve_project_config(
         self,
         project_name: str,
         global_config: Optional[GlobalConfiguration] = None,
-    ) -> ProjectRuntime:
-        """Create a project runtime with loaded configuration.
+    ) -> ResolvedProjectConfig:
+        """Load and resolve a project's configuration into a flat resolved config.
+
+        Merges global + project configuration, resolves all paths to absolute,
+        and pre-computes derived values.
 
         Args:
             project_name: Name of the project directory
             global_config: Global config (loaded if not provided)
 
         Returns:
-            ProjectRuntime ready for execution
+            ResolvedProjectConfig ready for execution
         """
         if global_config is None:
             global_config = self.load_global_config()
 
         # Load project config
-        config = self.load_project_config(project_name)
+        project_config = self.load_project_config(project_name)
 
         # Resolve paths
         projects_base_dir = self.repository_root / global_config.project_dir
         project_dir = projects_base_dir / project_name
 
-        # Create runtime
-        runtime = ProjectRuntime(
-            config=config,
+        # Use ConfigResolver to merge and resolve everything
+        resolver = ConfigResolver()
+        resolved = resolver.resolve(
+            global_config=global_config,
+            project_config=project_config,
+            project_name=project_name,
             project_dir=project_dir,
             repository_root=self.repository_root,
-            _global_config=global_config,
         )
 
-        # Find top-level file
-        runtime.top_level_file_path = runtime.find_top_level_file()
-
-        logger.debug(f"Created runtime for {project_name}")
-        return runtime
+        logger.debug(f"Resolved configuration for {project_name}")
+        return resolved
 
     def _execute_environment_setup(
         self,

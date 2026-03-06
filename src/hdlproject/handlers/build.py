@@ -105,13 +105,13 @@ class BuildHandler(BaseHandler):
         print("\n" + "=" * 50)
         print("Build Configuration")
         print("=" * 50)
-        print(f"Projects: {len(context.project_runtimes)}")
+        print(f"Projects: {len(context.resolved_configs)}")
         print(f"CPU cores per project: {context.handler_options.cores}")
         print(f"Clean build: {'Yes' if context.handler_options.clean else 'No'}")
         print("\nProjects to build:")
-        for runtime in context.project_runtimes:
-            version = runtime.vivado_version
-            print(f"  - {runtime.project_name} (Vivado {version})")
+        for config in context.resolved_configs:
+            version = config.vivado_version
+            print(f"  - {config.project_name} (Vivado {version})")
         print("=" * 50 + "\n")
 
     def prepare(self, context: SingleProjectExecution) -> None:
@@ -130,8 +130,7 @@ class BuildHandler(BaseHandler):
         )
 
         result = context.services.vivado_executor.execute(
-            runtime=context.runtime,
-            global_config=self.environment.global_config,
+            resolved_config=context.resolved_config,
             operation_paths=context.operation_paths,
             tcl_mode=self.CONFIG.tcl_mode,
             step_patterns=self.CONFIG.step_patterns,

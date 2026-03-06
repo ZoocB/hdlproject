@@ -62,19 +62,19 @@ class PublishHandler(BaseHandler):
 
     def configure(self, context: ExecutionContext) -> None:
         """Display publish configuration."""
-        # Store project configs for later use
-        for runtime in context.project_runtimes:
-            self.project_configs[runtime.project_name] = runtime
+        # Store resolved configs for later use
+        for config in context.resolved_configs:
+            self.project_configs[config.project_name] = config
 
         print("\n" + "=" * 50)
         print("Publish Configuration")
         print("=" * 50)
-        print(f"Projects to publish: {len(context.project_runtimes)}")
+        print(f"Projects to publish: {len(context.resolved_configs)}")
 
         # Group by Vivado version
         version_groups = {}
-        for name, runtime in self.project_configs.items():
-            version = runtime.vivado_version
+        for name, config in self.project_configs.items():
+            version = config.vivado_version
             if version not in version_groups:
                 version_groups[version] = []
             version_groups[version].append(name)
@@ -101,7 +101,7 @@ class PublishHandler(BaseHandler):
         try:
             # Load projects without file or vivado_executor validation
             # (publish doesn't need to execute Vivado, just read project configs)
-            project_runtimes = self.project_loader.load_projects(
+            resolved_configs = self.project_loader.load_projects(
                 projects,
                 check_files=False,
                 check_vivado_executor=False,
@@ -120,7 +120,7 @@ class PublishHandler(BaseHandler):
             # Create execution context
             context = ExecutionContext(
                 environment=self.environment,
-                project_runtimes=project_runtimes,
+                resolved_configs=resolved_configs,
                 handler_options=options,
                 operation_config=self.CONFIG,
                 services=services,
@@ -324,8 +324,8 @@ class PublishHandler(BaseHandler):
         project_data = {}
         for project in projects:
             if project in self.project_configs:
-                runtime = self.project_configs[project]
-                project_data[project] = {"vivado_version": runtime.vivado_version}
+                config = self.project_configs[project]
+                project_data[project] = {"vivado_version": config.vivado_version}
 
         build_data = {"token": token, "projects": project_data}
 

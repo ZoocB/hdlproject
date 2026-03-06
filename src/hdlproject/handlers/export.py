@@ -95,13 +95,13 @@ class ExportHandler(BaseHandler):
         print("\n" + "=" * 50)
         print("Export Configuration")
         print("=" * 50)
-        print(f"Projects: {len(context.project_runtimes)}")
+        print(f"Projects: {len(context.resolved_configs)}")
         print(f"Clean export: {'Yes' if context.handler_options.clean else 'No'}")
         if context.handler_options.output_dir:
             print(f"Output directory: {context.handler_options.output_dir}")
         print("\nProjects to export:")
-        for runtime in context.project_runtimes:
-            print(f"  - {runtime.project_name}")
+        for config in context.resolved_configs:
+            print(f"  - {config.project_name}")
         print("=" * 50 + "\n")
 
     def prepare(self, context: SingleProjectExecution) -> None:
@@ -129,8 +129,7 @@ class ExportHandler(BaseHandler):
         )
 
         result = context.services.vivado_executor.execute(
-            runtime=context.runtime,
-            global_config=self.environment.global_config,
+            resolved_config=context.resolved_config,
             operation_paths=context.operation_paths,
             tcl_mode=self.CONFIG.tcl_mode,
             step_patterns=self.CONFIG.step_patterns,
