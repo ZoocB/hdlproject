@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Optional
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from contextlib import contextmanager
 
 from hdlproject.runtime.context import (
     RuntimeEnvironment,
@@ -23,6 +24,7 @@ from hdlproject.handlers.services.vivado_executor import VivadoExecutorService
 from hdlproject.handlers.services.status_manager import StatusManager
 from hdlproject.handlers.services.compile_order_service import CompileOrderService
 from hdlproject.config.loader import ConfigLoader
+from hdlproject.constants import PROJECT_CONFIG_FILENAME
 from hdlproject.utils.logging_manager import (
     get_logger,
     get_project_logger,
@@ -31,6 +33,25 @@ from hdlproject.utils.logging_manager import (
 )
 
 logger = get_logger(__name__)
+
+
+@contextmanager
+def execution_lifecycle(status_manager: StatusManager):
+    """Context manager for execution lifecycle.
+
+    Ensures status manager is properly cleaned up even if execution fails.
+
+    Args:
+        status_manager: StatusManager instance to manage
+
+    Yields:
+        The status manager for use during execution
+    """
+    try:
+        status_manager.start()
+        yield status_manager
+    finally:
+        status_manager.cleanup()
 
 
 class BaseHandler(ABC):
@@ -80,37 +101,35 @@ class BaseHandler(ABC):
             projects: List of project names to process
             options: Handler-specific options object (BuildHandlerOptions, etc.)
         """
-        try:
-            # 1. Load all resolved project configurations
-            logger.info(f"Loading {len(projects)} project(s)")
-            resolved_configs = self.project_loader.load_projects(
-                projects,
-                check_files=True,
-            )
+        # 1. Load all resolved project configurations
+        logger.info(f"Loading {len(projects)} project(s)")
+        resolved_configs = self.project_loader.load_projects(
+            projects,
+            check_files=True,
+        )
 
-            # 2. Setup project logging
-            for config in resolved_configs:
-                operation_paths = config.get_operation_paths(self.CONFIG.name)
-                operation_paths.create_directories()
-                log_path = operation_paths.get_log_file(self.CONFIG.name)
-                setup_project_log(config.project_name, log_path)
+        # 2. Setup project logging
+        for config in resolved_configs:
+            operation_paths = config.get_operation_paths(self.CONFIG.name)
+            operation_paths.create_directories()
+            log_path = operation_paths.get_log_file(self.CONFIG.name)
+            setup_project_log(config.project_name, log_path)
 
-            # 3. Create status manager
-            self.status_manager = StatusManager(
-                operation_name=self.CONFIG.name,
-                operation_steps=self.CONFIG.operation_steps,
-                project_names=projects,
-            )
+        # 3. Create status manager
+        self.status_manager = StatusManager(
+            operation_name=self.CONFIG.name,
+            operation_steps=self.CONFIG.operation_steps,
+            project_names=projects,
+        )
 
-            # 3b. Set log file paths for status display
-            for config in resolved_configs:
-                operation_paths = config.get_operation_paths(self.CONFIG.name)
-                log_file = operation_paths.get_log_file(self.CONFIG.name)
-                self.status_manager.set_project_log_file(config.project_name, log_file)
+        # 3b. Set log file paths for status display
+        for config in resolved_configs:
+            operation_paths = config.get_operation_paths(self.CONFIG.name)
+            log_file = operation_paths.get_log_file(self.CONFIG.name)
+            self.status_manager.set_project_log_file(config.project_name, log_file)
 
-            # 3c. Start the display
-            self.status_manager.start()
-
+        # Use context manager for lifecycle management
+        with execution_lifecycle(self.status_manager):
             # 4. Create execution services
             services = ExecutionServices(
                 vivado_executor=self.vivado_executor_service,
@@ -155,11 +174,6 @@ class BaseHandler(ABC):
 
             # 9. Print summary
             self._print_operation_summary(context, results)
-
-        finally:
-            # Cleanup
-            if self.status_manager:
-                self.status_manager.cleanup()
 
     def _execute_sequential(self, context: ExecutionContext) -> dict[str, bool]:
         """Execute projects sequentially."""
@@ -373,7 +387,7 @@ class BaseHandler(ABC):
             if not d.is_dir() or d.name.startswith("."):
                 continue
 
-            config_file = d / "hdlproject_project_config.yaml"
+            config_file = d / PROJECT_CONFIG_FILENAME
             if config_file.exists():
                 projects.append(d.name)
 

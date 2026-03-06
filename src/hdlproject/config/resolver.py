@@ -231,3 +231,4 @@ class ConfigResolver:
             bd_dir=operation_dir / "bd",
             xci_dir=operation_dir / "xci",
         )
+

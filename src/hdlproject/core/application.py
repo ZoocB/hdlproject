@@ -9,6 +9,7 @@ from typing import Any, Optional
 from hdlproject.config.loader import ConfigLoader
 from hdlproject.config.repository import RepositoryConfigManager
 from hdlproject.runtime.context import RuntimeEnvironment
+from hdlproject.constants import GLOBAL_CONFIG_FILENAME
 from hdlproject.utils.logging_manager import (
     setup_application_log,
     set_verbosity,
@@ -250,7 +251,7 @@ class Application:
         raise RuntimeError(
             "Project directory not specified. Use one of:\n"
             f"  1. CLI: --project-dir /path/to/projects\n"
-            f"  2. Config: Set 'project_dir' in {git_root / 'hdlproject_global_config.yaml'}"
+            f"  2. Config: Set 'project_dir' in {git_root / GLOBAL_CONFIG_FILENAME}"
         )
 
     @staticmethod
