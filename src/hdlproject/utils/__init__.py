@@ -23,7 +23,6 @@ from hdlproject.utils.vivado_output_parser import (
     StepPattern
 )
 
-from hdlproject.utils.resources import *
 
 __all__ = [
     # Logging

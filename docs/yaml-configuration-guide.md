@@ -45,11 +45,12 @@ inherits:
   - [DeviceInfo](#deviceinfo)
   - [Generic](#generic)
   - [ShellConfig](#shellconfig)
-  - [VivadoExecutor](#vivadoexecutor)
+  - [ToolExecutor](#toolexecutor)
   - [GlobalConfiguration](#globalconfiguration)
-  - [VivadoVersion](#vivadoversion)
+  - [HooksConfig](#hooksconfig)
   - [ProjectInformation](#projectinformation)
   - [ProjectConfiguration](#projectconfiguration)
+  - [VivadoVersion](#vivadoversion)
 - [Complete Examples](#complete-examples)
 
 ## Configuration Reference
@@ -191,45 +192,39 @@ shell:
 | `mount_repo_root` | bool | No | `False` | Mount repository root into container. Adds '--volume {repo_root}:{repo_root}' to options. |
 | `options` | list[str] | No | `[]` | Additional options passed to the shell command after '--'. For docker_tool: docker/podman options like '--pull=never'. |
 
-### VivadoExecutor
+### ToolExecutor
 
-Configuration for executing a specific Vivado version.
+Configuration for executing a specific tool version.
 
-Defines how to execute Vivado and related tools (like hdldepends) for a
-specific version. Supports both local installations and containerised
-environments.
+Defines how to execute a tool (e.g., Vivado) and related utilities
+(like hdldepends) for a specific version. Supports both local
+installations and containerised environments.
 
 The execution flow is: [shell] → [setup] → [injected commands] → [executable]
 
 Example:
 ```yaml
-vivado_executors:
-  # Local installation
-  "2020.1":
-    setup:
-      - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"
-    executable: "vivado"
+tools:
+  vivado:
+    # Local installation
+    "2020.1":
+      setup:
+        - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"
+      executable: "vivado"
 
-  # Docker container with heredoc and repo mounting
-  "2023.2":
-    shell:
-      invoke: "docker_tool vivado-2023.2"
-      heredoc: true
-      mount_repo_root: true
-      options:
-        - "--pull=never"
-    setup:
-      - "source /opt/Xilinx/Vivado/2023.2/settings64.sh"
-      - 'REPO_ROOT="$(git rev-parse --show-toplevel)"'
-      - 'source "${REPO_ROOT}/venv/bin/activate"'
-    executable: "vivado"
-
-  # Local with extra environment setup
-  "2021.1":
-    setup:
-      - "source /tools/Xilinx/Vivado/2021.1/settings64.sh"
-      - "export XILINX_LOCAL_USER_DATA=no"
-    executable: "vivado"
+    # Docker container with heredoc and repo mounting
+    "2023.2":
+      shell:
+        invoke: "docker_tool vivado-2023.2"
+        heredoc: true
+        mount_repo_root: true
+        options:
+          - "--pull=never"
+      setup:
+        - "source /opt/Xilinx/Vivado/2023.2/settings64.sh"
+        - 'REPO_ROOT="$(git rev-parse --show-toplevel)"'
+        - 'source "${REPO_ROOT}/venv/bin/activate"'
+      executable: "vivado"
 ```
 
 | Field | Type | Required | Default | Description |
@@ -252,44 +247,62 @@ default_cores: 2
 max_parallel_builds: 4
 compile_order_format: "json"
 
-vivado_executors:
-  "2020.1":
-    setup:
-      - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"
-    executable: "vivado"
-  "2023.2":
-    shell:
-      invoke: "docker_tool vivado-2023.2"
-      heredoc: true
-    setup:
-      - "source /opt/Xilinx/Vivado/2023.2/settings64.sh"
-    executable: "vivado"
+tools:
+  vivado:
+    "2020.1":
+      setup:
+        - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"
+      executable: "vivado"
+    "2023.2":
+      shell:
+        invoke: "docker_tool vivado-2023.2"
+        heredoc: true
+      setup:
+        - "source /opt/Xilinx/Vivado/2023.2/settings64.sh"
+      executable: "vivado"
 ```
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
 | `project_dir` | str | Yes | `—` | Base directory containing project directories, relative to repository root. |
 | `hdldepends_config` | str | No | `null` | Default hdldepends config path, relative to repository root. Overridable per-project. |
-| `vivado_executors` | dict[str, [VivadoExecutor](#vivadoexecutor)] | No | `{}` | Vivado execution configs keyed by version (e.g., '2020.1'). Overridable per-project. |
+| `tools` | dict[str, dict[str, [ToolExecutor](#toolexecutor)]] | No | `{}` | Tool execution configs keyed by tool name then version. e.g., tools.vivado.'2020.1'. Overridable per-project. |
 | `default_cores` | int | No | `2` | Default CPU cores per project for synthesis/implementation. |
 | `max_parallel_builds` | int | No | `null` | Maximum parallel builds. If None, calculated from system resources. |
 | `compile_order_format` | str | No | `'json'` | Output format for compile order files ('json' or 'tcl'). |
 
-### VivadoVersion
+### HooksConfig
 
-Vivado version specification.
+TCL hook points for injecting custom commands at lifecycle stages.
+
+Each hook is a list of TCL commands executed at that point in the workflow.
+Hooks run inside the Vivado TCL interpreter and have access to the full
+Vivado command set plus all project context variables.
 
 Example:
 ```yaml
-vivado_version:
-  year: "2020"
-  minor: "1"
+hooks:
+  post_project_create:
+    - "set_property IP_REPO_PATHS /path/to/custom_ips [current_project]"
+    - "update_ip_catalog"
+  pre_synthesis:
+    - 'source "$env(REPO_ROOT)/scripts/pre_synth_checks.tcl"'
+  post_implementation:
+    - "report_utilization -file utilization.rpt"
+  post_bitstream:
+    - 'source "$env(REPO_ROOT)/scripts/post_build.tcl"'
 ```
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `year` | str | Yes | `—` | Vivado version year (e.g., '2020', '2023'). |
-| `minor` | str | Yes | `—` | Vivado version minor release (e.g., '1', '2'). |
+| `post_project_create` | list[str] | No | `[]` | Run after project creation and standard property setup. |
+| `post_project_setup` | list[str] | No | `[]` | Run after all project components (sources, constraints, IPs, BDs) are loaded. |
+| `pre_build` | list[str] | No | `[]` | Run before the build flow starts (before synthesis). |
+| `pre_synthesis` | list[str] | No | `[]` | Run immediately before synthesis launch. |
+| `post_synthesis` | list[str] | No | `[]` | Run after synthesis completes successfully. |
+| `pre_implementation` | list[str] | No | `[]` | Run immediately before implementation launch. |
+| `post_implementation` | list[str] | No | `[]` | Run after implementation completes successfully. |
+| `post_bitstream` | list[str] | No | `[]` | Run after bitstream generation and artefact packaging. |
 
 ### ProjectInformation
 
@@ -300,20 +313,20 @@ Example:
 project_information:
   project_name: my_project
   top_level_file_name: top_level
+  tool: vivado
+  tool_version: "2020.1"
   device_info:
     part_name: xc7z020clg400-1
     board_name: Arty_Z7_20
-  vivado_version:
-    year: "2020"
-    minor: "1"
 ```
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `project_name` | str | Yes | `—` | Vivado project name. Used for .xpr file and output naming. |
+| `project_name` | str | Yes | `—` | Tool project name. Used for project file and output naming. |
 | `top_level_file_name` | str | Yes | `—` | Top-level HDL module filename (without path or extension). |
 | `device_info` | [DeviceInfo](#deviceinfo) | Yes | `—` | FPGA device and board configuration. |
-| `vivado_version` | [VivadoVersion](#vivadoversion) | Yes | `—` | Vivado version to use for this project. |
+| `tool` | str | No | `'vivado'` | EDA tool to use for this project (e.g., 'vivado'). |
+| `tool_version` | str | Yes | `—` | Tool version string (e.g., '2020.1'). |
 | `top_level_generics` | dict[str, [Generic](#generic)] | No | `{}` | Generic parameters for top-level module. Keys are generic names. |
 
 ### ProjectConfiguration
@@ -345,14 +358,31 @@ set_property -name STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY -value rebuilt -obj
 |-------|------|----------|---------|-------------|
 | `project_information` | [ProjectInformation](#projectinformation) | Yes | `—` | Core project identification and settings. |
 | `hdldepends_config` | str | No | `null` | Project-specific hdldepends config path. Overrides global setting. |
-| `vivado_executors` | dict[str, [VivadoExecutor](#vivadoexecutor)] | No | `null` | Project-specific Vivado executors. Overrides global settings. |
+| `tools` | dict[str, dict[str, [ToolExecutor](#toolexecutor)]] | No | `null` | Project-specific tool executors. Overrides global settings. Keyed by tool name then version. |
 | `constraints` | list[[Constraint](#constraint)] | No | `[]` | Constraint files to include. |
 | `block_designs` | list[[BlockDesign](#blockdesign)] | No | `[]` | Block designs to include. |
 | `synth_options` | dict[str, str] | No | `{}` | Vivado synthesis properties (STEPS.SYNTH_DESIGN.ARGS.*). |
 | `impl_options` | dict[str, str] | No | `{}` | Vivado implementation properties (STEPS.*.ARGS.*). |
 | `build_configuration` | [BuildConfiguration](#buildconfiguration) | No | `BuildConfiguration(write_hw_platform=WriteHwPlatformOptions(include_bit=False))` | Build-time configuration options. |
+| `hooks` | [HooksConfig](#hooksconfig) | No | `HooksConfig(post_project_create=[], post_project_setup=[], pre_build=[], pre_synthesis=[], post_synthesis=[], pre_implementation=[], post_implementation=[], post_bitstream=[])` | TCL hook points for injecting custom commands at workflow lifecycle stages. |
 | `environment_setup` | dict[str, str] | No | `null` | Pre-processing scripts. Keys: executor, Values: script path. Output KEY=VALUE lines added to env. |
 | `hdlproject_config_version` | str | No | `'4.0.0'` | Configuration schema version. |
+
+### VivadoVersion
+
+Vivado version specification.
+
+Example:
+```yaml
+vivado_version:
+  year: "2020"
+  minor: "1"
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `year` | str | Yes | `—` | Vivado version year (e.g., '2020', '2023'). |
+| `minor` | str | Yes | `—` | Vivado version minor release (e.g., '1', '2'). |
 
 ## Complete Examples
 
@@ -363,31 +393,9 @@ Auto-generated examples showing all fields with dummy values.
 ```yaml
 project_dir: "my_project_dir_0"
 hdldepends_config: "my_hdldepends_config_0"
-vivado_executors:
-  my_vivado_executors_key_0:
-    executable: "my_executable_0"
-    setup:
-      - "my_setup_item_0"
-      - "my_setup_item_1"
-    shell:
-      invoke: "my_invoke_0"
-      heredoc: true
-      mount_repo_root: true
-      options:
-        - "my_options_item_0"
-        - "my_options_item_1"
-  my_vivado_executors_key_1:
-    executable: "my_executable_1"
-    setup:
-      - "my_setup_item_2"
-      - "my_setup_item_3"
-    shell:
-      invoke: "my_invoke_1"
-      heredoc: false
-      mount_repo_root: false
-      options:
-        - "my_options_item_2"
-        - "my_options_item_3"
+tools:
+  my_tools_key_0: "my_tools_0"
+  my_tools_key_1: "my_tools_1"
 default_cores: 0
 max_parallel_builds: 0
 compile_order_format: "my_compile_order_format_0"
@@ -403,9 +411,8 @@ project_information:
     part_name: "my_part_name_0"
     board_name: "my_board_name_0"
     board_part: "my_board_part_0"
-  vivado_version:
-    year: "my_year_0"
-    minor: "my_minor_0"
+  tool: "my_tool_0"
+  tool_version: "my_tool_version_0"
   top_level_generics:
     my_top_level_generics_key_0:
       type: "my_type_0"
@@ -418,31 +425,9 @@ project_information:
       width: 1
       format: "my_format_1"
 hdldepends_config: "my_hdldepends_config_0"
-vivado_executors:
-  my_vivado_executors_key_0:
-    executable: "my_executable_0"
-    setup:
-      - "my_setup_item_0"
-      - "my_setup_item_1"
-    shell:
-      invoke: "my_invoke_0"
-      heredoc: true
-      mount_repo_root: true
-      options:
-        - "my_options_item_0"
-        - "my_options_item_1"
-  my_vivado_executors_key_1:
-    executable: "my_executable_1"
-    setup:
-      - "my_setup_item_2"
-      - "my_setup_item_3"
-    shell:
-      invoke: "my_invoke_1"
-      heredoc: false
-      mount_repo_root: false
-      options:
-        - "my_options_item_2"
-        - "my_options_item_3"
+tools:
+  my_tools_key_0: "my_tools_0"
+  my_tools_key_1: "my_tools_1"
 constraints:
   - file: "my_file_0"
     fileset: "my_fileset_0"
@@ -474,6 +459,31 @@ impl_options:
 build_configuration:
   write_hw_platform:
     include_bit: true
+hooks:
+  post_project_create:
+    - "my_post_project_create_item_0"
+    - "my_post_project_create_item_1"
+  post_project_setup:
+    - "my_post_project_setup_item_0"
+    - "my_post_project_setup_item_1"
+  pre_build:
+    - "my_pre_build_item_0"
+    - "my_pre_build_item_1"
+  pre_synthesis:
+    - "my_pre_synthesis_item_0"
+    - "my_pre_synthesis_item_1"
+  post_synthesis:
+    - "my_post_synthesis_item_0"
+    - "my_post_synthesis_item_1"
+  pre_implementation:
+    - "my_pre_implementation_item_0"
+    - "my_pre_implementation_item_1"
+  post_implementation:
+    - "my_post_implementation_item_0"
+    - "my_post_implementation_item_1"
+  post_bitstream:
+    - "my_post_bitstream_item_0"
+    - "my_post_bitstream_item_1"
 environment_setup:
   my_environment_setup_key_0: "my_environment_setup_0"
   my_environment_setup_key_1: "my_environment_setup_1"

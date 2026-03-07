@@ -111,6 +111,7 @@ class ConfigResolver:
             synth_options=project_config.synth_options,
             impl_options=project_config.impl_options,
             build_configuration=project_config.build_configuration,
+            hooks=project_config.hooks,
             environment_setup=project_config.environment_setup,
             # Merged settings
             executor=tool_executor,

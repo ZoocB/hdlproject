@@ -4,7 +4,7 @@ This handler executes the full build flow: synthesis, implementation,
 and bitstream generation.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from hdlproject.handlers.base.handler import BaseHandler
 from hdlproject.handlers.base.operation_config import OperationConfig
@@ -12,6 +12,9 @@ from hdlproject.handlers.registry import HandlerInfo, register_handler
 from hdlproject.runtime.context import ExecutionContext, SingleProjectExecution
 from hdlproject.utils.vivado_output_parser import StepPattern
 from hdlproject.utils.logging_manager import get_project_logger
+
+# Valid build steps in execution order
+VALID_BUILD_STEPS = ["synthesis", "implementation", "bitstream"]
 
 
 @dataclass
@@ -24,6 +27,9 @@ class BuildHandlerOptions:
 
     cores: int = 2
     clean: bool = False
+    steps: list[str] = field(
+        default_factory=lambda: list(VALID_BUILD_STEPS)
+    )
 
 
 class BuildHandler(BaseHandler):
@@ -108,6 +114,7 @@ class BuildHandler(BaseHandler):
         print(f"Projects: {len(context.resolved_configs)}")
         print(f"CPU cores per project: {context.handler_options.cores}")
         print(f"Clean build: {'Yes' if context.handler_options.clean else 'No'}")
+        print(f"Build steps: {', '.join(context.handler_options.steps)}")
         print("\nProjects to build:")
         for config in context.resolved_configs:
             print(f"  - {config.project_name} ({config.tool} {config.tool_version})")
@@ -136,6 +143,7 @@ class BuildHandler(BaseHandler):
             status_display=context.services.status_manager.display,
             cores=context.handler_options.cores,
             extra_commands=extra_commands,
+            build_steps=context.handler_options.steps,
         )
 
         if not result.success:
@@ -164,6 +172,12 @@ register_handler(
                 "name": "--clean",
                 "action": "store_true",
                 "help": "Clean build directories",
+            },
+            {
+                "name": "--steps",
+                "type": str,
+                "default": ",".join(VALID_BUILD_STEPS),
+                "help": f"Comma-separated build steps ({','.join(VALID_BUILD_STEPS)})",
             },
         ],
         supports_multiple=True,

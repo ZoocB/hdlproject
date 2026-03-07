@@ -562,6 +562,62 @@ class BuildConfiguration(FlexibleModel):
     )
 
 
+class HooksConfig(FlexibleModel):
+    """TCL hook points for injecting custom commands at lifecycle stages.
+
+    Each hook is a list of TCL commands executed at that point in the workflow.
+    Hooks run inside the Vivado TCL interpreter and have access to the full
+    Vivado command set plus all project context variables.
+
+    Example:
+    ```yaml
+    hooks:
+      post_project_create:
+        - "set_property IP_REPO_PATHS /path/to/custom_ips [current_project]"
+        - "update_ip_catalog"
+      pre_synthesis:
+        - 'source "$env(REPO_ROOT)/scripts/pre_synth_checks.tcl"'
+      post_implementation:
+        - "report_utilization -file utilization.rpt"
+      post_bitstream:
+        - 'source "$env(REPO_ROOT)/scripts/post_build.tcl"'
+    ```
+    """
+
+    post_project_create: list[str] = Field(
+        default_factory=list,
+        description="Run after project creation and standard property setup.",
+    )
+    post_project_setup: list[str] = Field(
+        default_factory=list,
+        description="Run after all project components (sources, constraints, IPs, BDs) are loaded.",
+    )
+    pre_build: list[str] = Field(
+        default_factory=list,
+        description="Run before the build flow starts (before synthesis).",
+    )
+    pre_synthesis: list[str] = Field(
+        default_factory=list,
+        description="Run immediately before synthesis launch.",
+    )
+    post_synthesis: list[str] = Field(
+        default_factory=list,
+        description="Run after synthesis completes successfully.",
+    )
+    pre_implementation: list[str] = Field(
+        default_factory=list,
+        description="Run immediately before implementation launch.",
+    )
+    post_implementation: list[str] = Field(
+        default_factory=list,
+        description="Run after implementation completes successfully.",
+    )
+    post_bitstream: list[str] = Field(
+        default_factory=list,
+        description="Run after bitstream generation and artefact packaging.",
+    )
+
+
 class ProjectConfiguration(FlexibleModel):
     """Root project configuration (`hdlproject_project_config.yaml`).
 
@@ -620,6 +676,10 @@ class ProjectConfiguration(FlexibleModel):
     build_configuration: BuildConfiguration = Field(
         default_factory=BuildConfiguration,
         description="Build-time configuration options.",
+    )
+    hooks: HooksConfig = Field(
+        default_factory=HooksConfig,
+        description="TCL hook points for injecting custom commands at workflow lifecycle stages.",
     )
     environment_setup: Optional[dict[str, str]] = Field(
         default=None,
