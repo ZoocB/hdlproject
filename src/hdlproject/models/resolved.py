@@ -17,6 +17,7 @@ from hdlproject.models.models import (
     Constraint,
     BlockDesign,
     BuildConfiguration,
+    HooksConfig,
     ToolExecutor,
 )
 
@@ -117,6 +118,9 @@ class ResolvedProjectConfig(BaseModel):
     impl_options: dict[str, str] = Field(default_factory=dict)
     build_configuration: BuildConfiguration = Field(
         default_factory=BuildConfiguration
+    )
+    hooks: HooksConfig = Field(
+        default_factory=HooksConfig
     )
     environment_setup: Optional[dict[str, str]] = None
 

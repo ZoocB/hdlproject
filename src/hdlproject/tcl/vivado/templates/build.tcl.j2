@@ -1,0 +1,178 @@
+# Build flow - steps: {{ build_steps | join(', ') }}
+
+{% if hooks.pre_build %}
+# === User Hook: pre_build ===
+{% for cmd in hooks.pre_build %}
+{{ cmd }}
+{% endfor %}
+{% endif %}
+
+set build_start_time [clock seconds]
+
+# Display build information
+set file_name [project_context::get_name]
+set artefacts_path "{{ project_root }}/build_artefacts"
+file mkdir $artefacts_path
+project_context::set_artefacts_path $artefacts_path
+
+common::log_status ""
+common::log_status "================================="
+common::log_status "Build name: $file_name"
+common::log_status "Build steps: {{ build_steps | join(', ') }}"
+common::log_status "Synth Logs:  {{ vivado_project_dir }}/{{ project_name }}.runs/synth_1/runme.log"
+common::log_status "Impl Logs:   {{ vivado_project_dir }}/{{ project_name }}.runs/impl_1/runme.log"
+common::log_status "================================="
+
+{% if "synthesis" in build_steps %}
+# =============================================================================
+# Synthesis
+# =============================================================================
+
+{% if hooks.pre_synthesis %}
+# === User Hook: pre_synthesis ===
+{% for cmd in hooks.pre_synthesis %}
+{{ cmd }}
+{% endfor %}
+{% endif %}
+
+common::log_status ""
+common::log_status "Launching Runs -- Synthesis..."
+
+set start_time_synth [clock seconds]
+launch_runs synth_1 -jobs {{ cores }}
+wait_on_run synth_1
+set end_time_synth [clock seconds]
+set build_time_synth [common::format_time_interval [expr {$end_time_synth - $start_time_synth}]]
+common::log_status "DONE (synthesis time = $build_time_synth)"
+
+{% if hooks.post_synthesis %}
+# === User Hook: post_synthesis ===
+{% for cmd in hooks.post_synthesis %}
+{{ cmd }}
+{% endfor %}
+{% endif %}
+
+{% endif %}
+
+{% if "implementation" in build_steps %}
+# =============================================================================
+# Implementation
+# =============================================================================
+
+{% if hooks.pre_implementation %}
+# === User Hook: pre_implementation ===
+{% for cmd in hooks.pre_implementation %}
+{{ cmd }}
+{% endfor %}
+{% endif %}
+
+common::log_status "Launching Runs -- Implementation..."
+set start_time_impl [clock seconds]
+launch_runs impl_1 -jobs {{ cores }}
+wait_on_run impl_1
+
+{% if "bitstream" in build_steps %}
+launch_runs impl_1 -to_step write_bitstream
+wait_on_run impl_1
+{% endif %}
+
+open_checkpoint "{{ vivado_project_dir }}/{{ project_name }}.runs/impl_1/{{ top_level }}_routed.dcp" \
+    -part {{ part }}
+
+set end_time_impl [clock seconds]
+set build_time_impl [common::format_time_interval [expr {$end_time_impl - $start_time_impl}]]
+common::log_status "DONE (implementation time = $build_time_impl)"
+
+{% if hooks.post_implementation %}
+# === User Hook: post_implementation ===
+{% for cmd in hooks.post_implementation %}
+{{ cmd }}
+{% endfor %}
+{% endif %}
+
+{% endif %}
+
+{% if "bitstream" in build_steps %}
+# =============================================================================
+# Write Hardware Platform & Copy Artefacts
+# =============================================================================
+
+set hw_platform_args [list -fixed -force -file "${artefacts_path}/${file_name}.xsa"]
+
+{% if build_configuration.get("write_hw_platform") %}
+{% for flag, enabled in build_configuration["write_hw_platform"].items() %}
+{% if enabled %}
+lappend hw_platform_args "-{{ flag }}"
+common::log_status "write_hw_platform: enabling -{{ flag }}"
+{% endif %}
+{% endfor %}
+{% endif %}
+
+write_hw_platform {*}$hw_platform_args
+
+# Copy output files
+set impl_dir "{{ vivado_project_dir }}/{{ project_name }}.runs/impl_1"
+
+if {[catch {file copy -force "${impl_dir}/{{ top_level }}.bit" "${artefacts_path}/${file_name}.bit"} result]} {
+    common::log_warning "build" "problem copying bit file: $result"
+}
+
+if {[catch {file copy -force "${impl_dir}/{{ top_level }}.ltx" "${artefacts_path}/${file_name}.ltx"} result]} {
+    common::log_warning "build" "problem copying ltx file: $result"
+}
+
+# Check timing
+set timing_report_path "{{ vivado_project_dir }}/{{ project_name }}.runs/impl_1/{{ top_level }}_timing_summary_routed.rpt"
+set timing_passed [build::check_timing $timing_report_path]
+
+# Zip build artefacts
+common::log_status "Zipping build artefacts..."
+
+set files_to_zip [list \
+    "${file_name}.xsa" \
+    "${file_name}.bit" \
+    "${file_name}.ltx" \
+]
+set zip_file_name "${file_name}.zip"
+
+set original_dir [pwd]
+cd ${artefacts_path}
+file delete -force $zip_file_name
+if {[catch {
+    exec zip $zip_file_name {*}$files_to_zip
+} result]} {
+    common::log_warning "build" "problem zipping files: $result"
+} else {
+    set realpath [file normalize ${artefacts_path}/]
+    common::log_status "Files successfully zipped to $realpath"
+}
+cd $original_dir
+
+{% if hooks.post_bitstream %}
+# === User Hook: post_bitstream ===
+{% for cmd in hooks.post_bitstream %}
+{{ cmd }}
+{% endfor %}
+{% endif %}
+
+{% endif %}
+
+# =============================================================================
+# Summary
+# =============================================================================
+
+set build_end_time [clock seconds]
+set total_time [common::format_time_interval [expr {$build_end_time - $build_start_time}]]
+common::log_status "Total Time: $total_time"
+
+project_context::print_context
+
+{% if "bitstream" in build_steps %}
+# Return error if timing failed
+if {![info exists timing_passed] || !$timing_passed} {
+    common::log_error "build" "Timing violations detected"
+    exit 1
+}
+{% endif %}
+
+exit 0

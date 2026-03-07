@@ -18,7 +18,7 @@ from typing import Optional
 from hdlproject.models.resolved import ResolvedProjectConfig, ResolvedOperationPaths
 from hdlproject.core.output_processor import VivadoOutputProcessor
 from hdlproject.utils.vivado_output_parser import VivadoOutputParser, StepPattern
-from hdlproject.utils.resources import get_tcl_script
+from hdlproject.core.tcl_generator import TclGenerator
 from hdlproject.utils.logging_manager import get_logger, get_project_logger
 
 logger = get_logger(__name__)
@@ -93,6 +93,7 @@ class VivadoExecutorService:
         status_display=None,
         cores: int = 1,
         extra_commands: Optional[list[str]] = None,
+        build_steps: Optional[list[str]] = None,
     ) -> ExecutionResult:
         """Execute Vivado for a project.
 
@@ -104,6 +105,7 @@ class VivadoExecutorService:
             status_display: Optional status display for updates
             cores: Number of CPU cores to use
             extra_commands: Additional commands to run before Vivado (e.g., hdldepends)
+            build_steps: Build steps to run (only for build mode)
 
         Returns:
             ExecutionResult with success status and errors
@@ -112,10 +114,14 @@ class VivadoExecutorService:
 
         executor = resolved_config.executor
 
-        # Build the vivado arguments
-        tcl_script = get_tcl_script("project_workflow.tcl")
-        tcl_args = resolved_config.get_tcl_arguments(
-            tcl_mode, operation_paths.operation, cores
+        # Generate TCL scripts from templates
+        tcl_generator = TclGenerator()
+        tcl_script = tcl_generator.generate(
+            resolved_config=resolved_config,
+            operation_paths=operation_paths,
+            mode=tcl_mode,
+            cores=cores,
+            build_steps=build_steps,
         )
 
         vivado_args = [
@@ -124,8 +130,6 @@ class VivadoExecutorService:
             "-notrace",
             "-source",
             str(tcl_script),
-            "-tclargs",
-            *tcl_args,
         ]
 
         # Build the complete command (handles heredoc vs && chaining)
