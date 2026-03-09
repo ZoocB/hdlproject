@@ -13,7 +13,7 @@ from hdlproject.utils.vivado_output_parser import (
     MessageType as ParsedMessageType,
     StepResultType,
 )
-from hdlproject.utils.status_display import LiveStatusDisplay, MessageLevel, StepState
+from hdlproject.utils.status_display import LiveStatusDisplay, MessageLevel
 
 logger = get_logger(__name__)
 

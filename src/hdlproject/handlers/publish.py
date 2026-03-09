@@ -7,7 +7,6 @@ import subprocess
 import yaml
 import uuid
 import hashlib
-from pathlib import Path
 from dataclasses import dataclass
 
 from hdlproject.handlers.base.handler import BaseHandler
@@ -20,7 +19,6 @@ from hdlproject.runtime.context import (
     SingleProjectExecution,
     ExecutionServices,
 )
-from hdlproject.utils.vivado_output_parser import StepPattern
 from hdlproject.utils.logging_manager import get_logger
 
 logger = get_logger(__name__)
@@ -112,7 +110,7 @@ class PublishHandler(BaseHandler):
 
             # Create services
             services = ExecutionServices(
-                vivado_executor=self.vivado_executor_service,
+                tool_executor=self.tool_executor_service,
                 status_manager=None,
                 compile_order_service=None,
             )

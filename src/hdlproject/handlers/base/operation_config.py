@@ -22,6 +22,7 @@ class OperationConfig:
         step_patterns: Patterns for parsing Vivado output
         operation_steps: Steps to display in status
         supports_gui: Whether this operation opens GUI
+        supports_parallel: Whether this operation supports parallel execution
     """
 
     name: str
@@ -29,3 +30,4 @@ class OperationConfig:
     step_patterns: list[StepPattern]
     operation_steps: list[str]
     supports_gui: bool = False
+    supports_parallel: bool = True

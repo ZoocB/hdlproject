@@ -49,7 +49,7 @@ class ExecutionServices:
     These are stateless services that can be safely shared across threads.
     """
 
-    vivado_executor: Any  # VivadoExecutorService
+    tool_executor: Any  # ToolExecutorService
     status_manager: Any  # StatusManager
     compile_order_service: Any  # CompileOrderService (can be None)
 

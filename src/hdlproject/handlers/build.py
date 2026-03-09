@@ -131,7 +131,7 @@ class BuildHandler(BaseHandler):
             context.operation_paths
         )
 
-        result = context.services.vivado_executor.execute(
+        result = context.services.tool_executor.execute(
             resolved_config=context.resolved_config,
             operation_paths=context.operation_paths,
             tcl_mode=self.CONFIG.tcl_mode,

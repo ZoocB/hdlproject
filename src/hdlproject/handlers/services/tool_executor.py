@@ -1,11 +1,11 @@
-"""Service for executing Vivado processes.
+"""Service for executing EDA tool processes.
 
-This module handles all Vivado process execution, using the VivadoExecutor
+This module handles all tool process execution, using the ToolExecutor
 configuration to properly set up the environment. Supports both local
 installations and Docker-based execution.
 
 Execution flow:
-    [shell] -> [setup] -> [extra_commands (e.g., hdldepends)] -> [executable (vivado)]
+    [shell] -> [setup] -> [extra_commands (e.g., hdldepends)] -> [executable]
 """
 
 import os
@@ -33,11 +33,11 @@ class ExecutionResult:
     exit_code: int = 0
 
 
-class VivadoExecutorService:
-    """Service for executing Vivado processes.
+class ToolExecutorService:
+    """Service for executing EDA tool processes.
 
-    Uses the VivadoExecutor configuration from the ResolvedProjectConfig
-    to properly set up the environment before running Vivado commands.
+    Uses the ToolExecutor configuration from the ResolvedProjectConfig
+    to properly set up the environment before running tool commands.
     Supports injecting additional commands (like hdldepends) that run
     before Vivado in the same shell session.
     """
