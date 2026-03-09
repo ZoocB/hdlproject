@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hdlproject"
-version = "2.0.0"
+version = "0.1.0"
 description = "A modular system for managing Vivado FPGA projects"
 readme = "README.md"
 requires-python = ">=3.12"
