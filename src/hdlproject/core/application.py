@@ -4,12 +4,14 @@
 import subprocess
 import shutil
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from hdlproject.handlers.base.handler import BaseHandler
 
 from hdlproject.config.loader import ConfigLoader
-from hdlproject.config.repository import RepositoryConfigManager
 from hdlproject.runtime.context import RuntimeEnvironment
-from hdlproject.constants import GLOBAL_CONFIG_FILENAME
+from hdlproject.constants import GLOBAL_CONFIG_FILENAME, PROJECT_CONFIG_FILENAME
 from hdlproject.utils.logging_manager import (
     setup_application_log,
     set_verbosity,
@@ -126,7 +128,7 @@ class Application:
         logger.info(f"Using project directory: {project_dir}")
 
         # Step 4: Resolve compile order format (CLI -> Config -> Default)
-        repo_config = RepositoryConfigManager(git_root).load()
+        repo_config = ConfigLoader(git_root).load_global_config()
         compile_format = (
             getattr(args, "compile_order_format", None)
             or repo_config.compile_order_format
@@ -229,7 +231,7 @@ class Application:
             RuntimeError: If project_dir cannot be resolved
         """
         # Load repository config
-        repo_config = RepositoryConfigManager(git_root).load()
+        repo_config = ConfigLoader(git_root).load_global_config()
 
         # Priority 1: CLI argument
         if hasattr(args, "project_dir") and args.project_dir:
@@ -273,7 +275,7 @@ class Application:
         options_dict: dict[str, Any],
         interactive: bool = False,
         return_handler: bool = False,
-    ) -> None:
+    ) -> Optional["BaseHandler"]:
         """
         Execute a handler with given projects and options.
 
@@ -283,6 +285,9 @@ class Application:
             options_dict: dictionary of handler options
             interactive: Whether running in interactive/menu mode
             return_handler: Whether to return the handler instance
+
+        Returns:
+            Handler instance if return_handler is True, otherwise None
 
         Raises:
             ValueError: If handler not found
@@ -316,18 +321,21 @@ class Application:
         return None
 
     def list_projects(self) -> list[str]:
-        """Get list of available projects"""
-        from hdlproject.handlers.registry import get_handler
+        """Get list of available projects by scanning the projects directory."""
+        projects_dir = self.runtime_environment.projects_base_dir
+        if not projects_dir.exists():
+            return []
 
-        # Use any handler to get project list
-        handler_info = get_handler("build")
-        if handler_info:
-            handler = handler_info.create_handler(
-                environment=self.runtime_environment,
-                interactive=False,
-            )
-            return handler.get_project_list()
-        return []
+        projects = []
+        for d in projects_dir.iterdir():
+            if not d.is_dir() or d.name.startswith("."):
+                continue
+
+            config_file = d / PROJECT_CONFIG_FILENAME
+            if config_file.exists():
+                projects.append(d.name)
+
+        return sorted(projects)
 
     def get_handler_info(self, name: str):
         """Get handler information"""

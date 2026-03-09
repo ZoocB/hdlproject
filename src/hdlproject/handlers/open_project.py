@@ -115,7 +115,7 @@ class OpenProjectHandler(BaseHandler):
             context.operation_paths
         )
 
-        result = context.services.vivado_executor.execute(
+        result = context.services.tool_executor.execute(
             resolved_config=context.resolved_config,
             operation_paths=context.operation_paths,
             tcl_mode=self.CONFIG.tcl_mode,
@@ -143,7 +143,7 @@ class OpenProjectHandler(BaseHandler):
         context.services.status_manager.update_step(context.project_name, "Opening GUI")
 
         # Open GUI
-        success = context.services.vivado_executor.execute_gui(
+        success = context.services.tool_executor.execute_gui(
             resolved_config=context.resolved_config,
             project_path=xpr_path,
         )

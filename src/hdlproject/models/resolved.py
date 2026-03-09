@@ -8,7 +8,7 @@ execution.
 
 import json
 from pathlib import Path
-from typing import Optional, Any
+from typing import Optional
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -100,9 +100,7 @@ class ResolvedProjectConfig(BaseModel):
     vivado_project_name: str = Field(
         description="Tool project name from config, used for project file naming."
     )
-    tool: str = Field(
-        description="EDA tool name (e.g., 'vivado')."
-    )
+    tool: str = Field(description="EDA tool name (e.g., 'vivado').")
 
     # === Pre-resolved paths ===
     paths: ResolvedPaths
@@ -116,12 +114,8 @@ class ResolvedProjectConfig(BaseModel):
     block_designs: list[BlockDesign] = Field(default_factory=list)
     synth_options: dict[str, str] = Field(default_factory=dict)
     impl_options: dict[str, str] = Field(default_factory=dict)
-    build_configuration: BuildConfiguration = Field(
-        default_factory=BuildConfiguration
-    )
-    hooks: HooksConfig = Field(
-        default_factory=HooksConfig
-    )
+    build_configuration: BuildConfiguration = Field(default_factory=BuildConfiguration)
+    hooks: HooksConfig = Field(default_factory=HooksConfig)
     environment_setup: Optional[dict[str, str]] = None
 
     # === Merged settings (global + project override) ===

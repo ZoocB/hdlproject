@@ -5,7 +5,6 @@ This module provides the base class for all operation handlers (build, export, e
 
 import shutil
 import psutil
-from pathlib import Path
 from typing import Any, Optional
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -20,16 +19,13 @@ from hdlproject.runtime.context import (
 from hdlproject.models.resolved import ResolvedProjectConfig
 from hdlproject.handlers.base.operation_config import OperationConfig
 from hdlproject.handlers.services.project_loader import ProjectLoaderService
-from hdlproject.handlers.services.vivado_executor import VivadoExecutorService
+from hdlproject.handlers.services.tool_executor import ToolExecutorService
 from hdlproject.handlers.services.status_manager import StatusManager
 from hdlproject.handlers.services.compile_order_service import CompileOrderService
 from hdlproject.config.loader import ConfigLoader
-from hdlproject.constants import PROJECT_CONFIG_FILENAME
 from hdlproject.utils.logging_manager import (
     get_logger,
-    get_project_logger,
     setup_project_log,
-    should_show_status_display,
 )
 
 logger = get_logger(__name__)
@@ -87,7 +83,7 @@ class BaseHandler(ABC):
             self.config_loader,
             environment.global_config,
         )
-        self.vivado_executor_service = VivadoExecutorService()
+        self.tool_executor_service = ToolExecutorService()
 
         # Status manager created per execution
         self.status_manager: Optional[StatusManager] = None
@@ -132,7 +128,7 @@ class BaseHandler(ABC):
         with execution_lifecycle(self.status_manager):
             # 4. Create execution services
             services = ExecutionServices(
-                vivado_executor=self.vivado_executor_service,
+                tool_executor=self.tool_executor_service,
                 status_manager=self.status_manager,
                 compile_order_service=None,  # Created per-project
             )
@@ -284,7 +280,7 @@ class BaseHandler(ABC):
 
         # Create services with project-specific compile order service
         services = ExecutionServices(
-            vivado_executor=context.services.vivado_executor,
+            tool_executor=context.services.tool_executor,
             status_manager=context.services.status_manager,
             compile_order_service=compile_order_service,
         )
@@ -341,17 +337,7 @@ class BaseHandler(ABC):
 
     def _get_supports_parallel(self) -> bool:
         """Check if this handler supports parallel execution."""
-        from hdlproject.handlers.registry import get_handler
-
-        handler_info = get_handler(self.CONFIG.name)
-        if handler_info:
-            return handler_info.supports_multiple
-
-        logger.warning(
-            f"Handler {self.CONFIG.name} not found in registry, "
-            "defaulting to sequential execution"
-        )
-        return False
+        return self.CONFIG.supports_parallel
 
     def _clean_operation_directories(self, context: ExecutionContext) -> None:
         """Clean operation directories for all projects."""
@@ -375,23 +361,6 @@ class BaseHandler(ABC):
     ) -> None:
         """Print operation summary. Override in subclasses if needed."""
         pass
-
-    def get_project_list(self) -> list[str]:
-        """Get list of available projects."""
-        projects_dir = self.environment.projects_base_dir
-        if not projects_dir.exists():
-            return []
-
-        projects = []
-        for d in projects_dir.iterdir():
-            if not d.is_dir() or d.name.startswith("."):
-                continue
-
-            config_file = d / PROJECT_CONFIG_FILENAME
-            if config_file.exists():
-                projects.append(d.name)
-
-        return sorted(projects)
 
     # === Abstract methods for subclasses ===
 
