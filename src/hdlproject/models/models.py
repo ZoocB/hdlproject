@@ -386,43 +386,6 @@ class DeviceInfo(FlexibleModel):
     )
 
 
-class Generic(FlexibleModel):
-    """HDL generic/parameter for top-level module.
-
-    Example:
-    ```yaml
-    top_level_generics:
-      DATA_WIDTH:
-        type: integer
-        value: 32
-      ENABLE_DEBUG:
-        type: std_logic
-        value: '1'
-      INIT_VECTOR:
-        type: std_logic_vector
-        width: 8
-        value: "0xFF"
-        format: hex
-    ```
-    """
-
-    type: str = Field(
-        description="VHDL type (e.g., integer, std_logic, std_logic_vector)."
-    )
-    value: Optional[Union[str, int, float, bool]] = Field(
-        default=None,
-        description="Value to assign. Type must be compatible with declared type.",
-    )
-    width: Optional[int] = Field(
-        default=None,
-        description="Bit width for vector types.",
-    )
-    format: Optional[str] = Field(
-        default=None,
-        description="Value format hint ('hex', 'bin', 'dec').",
-    )
-
-
 class ProjectInformation(FlexibleModel):
     """Core project identification and settings.
 
@@ -452,10 +415,6 @@ class ProjectInformation(FlexibleModel):
     )
     tool_version: str = Field(
         description="Tool version string (e.g., '2020.1').",
-    )
-    top_level_generics: dict[str, Generic] = Field(
-        default_factory=dict,
-        description="Generic parameters for top-level module. Keys are generic names.",
     )
 
     @property
@@ -532,6 +491,55 @@ class BlockDesign(FlexibleModel):
     )
 
 
+class BuildVariable(FlexibleModel):
+    """A build-time variable resolved before synthesis.
+
+    Use `value` for static data or `command` for dynamically computed data.
+    Exactly one of `value` or `command` must be set.
+
+    Example:
+    ```yaml
+    build_variables:
+      version_major:
+        value: 1
+      git_hash:
+        command: "git rev-parse --short HEAD"
+      build_date:
+        command: "date +%y%m%d"
+    ```
+    """
+
+    value: Optional[Union[str, int, float]] = Field(
+        default=None,
+        description="Static value for this variable.",
+    )
+    command: Optional[str] = Field(
+        default=None,
+        description="Shell command to execute. stdout is captured and stripped as the value.",
+    )
+
+
+class GeneratedSource(FlexibleModel):
+    """A Jinja2 template that is rendered at build time and added to the project.
+
+    The template has access to the full resolved project configuration
+    and resolved build variables. Reference values explicitly:
+    - ``{{ build_variables.version_major }}``
+    - ``{{ project_information.project_name }}``
+    - ``{{ project_information.device_info.board_name }}``
+
+    Example:
+    ```yaml
+    generated_sources:
+      - template: "hdl/build_info_pkg.vhd.j2"
+    ```
+    """
+
+    template: str = Field(
+        description="Path to Jinja2 template file, relative to the YAML config file.",
+    )
+
+
 class WriteHwPlatformOptions(FlexibleModel):
     """Options for write_hw_platform Vivado command.
 
@@ -554,8 +562,32 @@ class BuildConfiguration(FlexibleModel):
 
     These are persistent options stored in the config, distinct from
     CLI runtime options like --cores or --clean.
+
+    Example:
+    ```yaml
+    build_configuration:
+      build_variables:
+        version_major:
+          value: 1
+        version_minor:
+          value: 0
+        git_hash:
+          command: "git rev-parse --short HEAD"
+      generated_sources:
+        - template: "hdl/build_info_pkg.vhd.j2"
+      write_hw_platform:
+        include_bit: true
+    ```
     """
 
+    build_variables: dict[str, BuildVariable] = Field(
+        default_factory=dict,
+        description="Build-time variables resolved before synthesis. Keys are variable names.",
+    )
+    generated_sources: list[GeneratedSource] = Field(
+        default_factory=list,
+        description="Jinja2 templates rendered at build time and added as project sources.",
+    )
     write_hw_platform: WriteHwPlatformOptions = Field(
         default_factory=WriteHwPlatformOptions,
         description="Options for hardware platform file (.xsa) generation.",

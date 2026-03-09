@@ -323,32 +323,8 @@ namespace eval project_context {
             set upper_board_name "UNKNOWN"
         }
 
-        # Get git info
-        if {[catch {exec git rev-parse --abbrev-ref HEAD} git_branch]} {
-            set git_branch "unknown"
-        }
-
-        if {[catch {exec git config user.name} git_user_name]} {
-            set git_user_name "Unknown User"
-        }
-        set git_initials [get_initials $git_user_name]
-
-        # Default version and build info
-        set major_version "0"
-        set minor_version "0"
-        set patch_version "0"
-        set build_number "0"
-        set build_revision "0"
-
-        # Generate metadata
-        if {$build_revision == 0} {
-            set meta_data "${git_initials}.${git_branch}"
-        } else {
-            set meta_data "${git_initials}.${git_branch}.r${build_revision}"
-        }
-
         # Generate default project name
-        set project_name "${upper_project_name}_${upper_board_name}_v${major_version}.${minor_version}.${patch_version}+${build_number}.${meta_data}"
+        set project_name "${upper_project_name}_${upper_board_name}"
 
         common::log_info "Default project context name: $project_name"
     }
