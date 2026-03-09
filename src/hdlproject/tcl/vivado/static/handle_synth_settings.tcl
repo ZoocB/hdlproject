@@ -4,8 +4,6 @@ namespace eval handle_synth_settings {
     # Module names for logging
     variable MODULE_NAME_CONFIG "handle_synth_settings::configure"
     variable MODULE_NAME_OPTIONS "handle_synth_settings::apply_options"
-    variable MODULE_NAME_GENERICS "handle_synth_settings::apply_generics"
-    
     # Configure synthesis settings
     proc configure_synth_settings {part_name vivado_version_year} {
         variable MODULE_NAME_CONFIG
@@ -79,70 +77,5 @@ namespace eval handle_synth_settings {
         return [common::report_step_result "handle_synth_settings::apply_custom_synth_options" $MODULE_NAME_OPTIONS \
             [dict create options_applied $options_applied]]
     }
-    
-    # Apply top-level generics to synthesis
-    proc apply_top_level_generics {} {
-        variable MODULE_NAME_GENERICS
-        
-        # Initialise logging for this module
-        common::log_init $MODULE_NAME_GENERICS
-        
-        common::log_status "Applying top-level generics..."
-        
-        # Get HDL formatted generics from config
-        set hdl_generics [config::get_generics_as_hdl]
 
-        puts "hdl_generics: $hdl_generics"
-        
-        if {$hdl_generics eq ""} {
-            common::log_info "\tNo top-level generics defined"
-            return [common::report_step_result "handle_synth_settings::apply_top_level_generics" $MODULE_NAME_GENERICS]
-        }
-        
-        # MORE OPTIONS is the correct property for generics
-        set more_options "STEPS.SYNTH_DESIGN.ARGS.MORE OPTIONS"
-        
-        # Get current MORE OPTIONS value (might be empty)
-        set current_options ""
-        if {[catch {
-            set current_options [get_property $more_options [get_runs synth_1]]
-        }]} {
-            # Property might not exist yet, that's OK
-            set current_options ""
-        }
-        
-        # Append our generics to any existing options
-        if {$current_options ne ""} {
-            # There are existing options, append with a space
-            set new_options "$current_options $hdl_generics"
-        } else {
-            # No existing options, just use our generics
-            set new_options $hdl_generics
-        }
-        
-        # Set the property
-        if {[catch {
-            set_property -name $more_options -value $new_options -objects [get_runs synth_1]
-        } err]} {
-            common::log_error $MODULE_NAME_GENERICS "Failed to set MORE OPTIONS: $err"
-            return [common::report_step_result "handle_synth_settings::apply_top_level_generics" $MODULE_NAME_GENERICS]
-        }
-        
-        # Log what we applied
-        common::log_info "\tApplied generics to MORE OPTIONS:"
-        common::log_info "\t\t$hdl_generics"
-        
-        # Log each generic individually for clarity
-        foreach generic [split $hdl_generics " -generic "] {
-            if {$generic ne ""} {
-                common::log_info "\t\t-generic $generic"
-            }
-        }
-        
-        # Set the current synth run
-        current_run -synthesis [get_runs synth_1]
-        
-        # Return result using automatic tracking
-        return [common::report_step_result "handle_synth_settings::apply_top_level_generics" $MODULE_NAME_GENERICS]
-    }
 }

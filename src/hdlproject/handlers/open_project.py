@@ -53,9 +53,6 @@ class OpenProjectHandler(BaseHandler):
                 "handle_synth_settings::apply_custom_synth_options",
             ),
             StepPattern.tcl(
-                "Applying Generics", "handle_synth_settings::apply_top_level_generics"
-            ),
-            StepPattern.tcl(
                 "Configuring Implementation",
                 "handle_impl_settings::configure_impl_settings",
             ),
@@ -76,7 +73,6 @@ class OpenProjectHandler(BaseHandler):
             "Setting Top Level",
             "Configuring Synthesis",
             "Applying Synthesis Options",
-            "Applying Generics",
             "Configuring Implementation",
             "Applying Implementation Options",
             "Opening GUI",

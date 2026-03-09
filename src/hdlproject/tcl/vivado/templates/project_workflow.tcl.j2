@@ -145,6 +145,20 @@ if {[dict get $result status] eq "error"} {
     set workflow_has_warnings 1
 }
 
+{% if generated_source_files %}
+# Add generated source files (rendered from Jinja2 templates by hdlproject)
+common::log_status "Adding generated source files..."
+{% for file_path in generated_source_files %}
+if {[file exists "{{ file_path }}"]} {
+    add_files -norecurse -fileset [get_filesets sources_1] "{{ file_path }}"
+    common::log_info "\tAdded generated source: {{ file_path }}"
+} else {
+    common::log_error "project_workflow" "Generated source file not found: {{ file_path }}"
+    set workflow_has_errors 1
+}
+{% endfor %}
+{% endif %}
+
 # Handle constraints
 set result [handle_constraints::process_constraints $files_list]
 if {[dict get $result status] eq "error"} {
@@ -180,13 +194,6 @@ if {[dict get $result status] eq "error"} {
 }
 
 set result [handle_synth_settings::apply_custom_synth_options]
-if {[dict get $result status] eq "error"} {
-    set workflow_has_errors 1
-} elseif {[dict get $result status] eq "warning"} {
-    set workflow_has_warnings 1
-}
-
-set result [handle_synth_settings::apply_top_level_generics]
 if {[dict get $result status] eq "error"} {
     set workflow_has_errors 1
 } elseif {[dict get $result status] eq "warning"} {
