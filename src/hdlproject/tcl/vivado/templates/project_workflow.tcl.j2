@@ -113,6 +113,9 @@ handle_source_files::create_sim_fileset
 
 # Initialise project context
 project_context::initialise
+{% if artefact_name %}
+project_context::set_name "{{ artefact_name }}"
+{% endif %}
 
 # =============================================================================
 # Process Project Components

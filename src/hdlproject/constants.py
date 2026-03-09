@@ -6,8 +6,6 @@ GLOBAL_CONFIG_FILENAME = "hdlproject_global_config.yaml"
 
 # Directory names
 HDLPROJECT_DIR_BASE = "hdlproject"
-HDLPROJECT_VHDL2008_DIR = f"{HDLPROJECT_DIR_BASE}_vhdl2008"
-HDLPROJECT_VERILOG_DIR = f"{HDLPROJECT_DIR_BASE}_verilog"
 
 # Known operations
 KNOWN_BUILD_OPERATIONS = ["build", "open", "export", "publish"]
