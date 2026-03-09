@@ -40,10 +40,11 @@ inherits:
 - [Configuration Reference](#configuration-reference)
   - [BlockDesign](#blockdesign)
   - [WriteHwPlatformOptions](#writehwplatformoptions)
+  - [BuildVariable](#buildvariable)
+  - [GeneratedSource](#generatedsource)
   - [BuildConfiguration](#buildconfiguration)
   - [Constraint](#constraint)
   - [DeviceInfo](#deviceinfo)
-  - [Generic](#generic)
   - [ShellConfig](#shellconfig)
   - [ToolExecutor](#toolexecutor)
   - [GlobalConfiguration](#globalconfiguration)
@@ -88,6 +89,49 @@ build_configuration:
 |-------|------|----------|---------|-------------|
 | `include_bit` | bool | No | `False` | Include bitstream in hardware platform file (.xsa). |
 
+### BuildVariable
+
+A build-time variable resolved before synthesis.
+
+Use `value` for static data or `command` for dynamically computed data.
+Exactly one of `value` or `command` must be set.
+
+Example:
+```yaml
+build_variables:
+  version_major:
+    value: 1
+  git_hash:
+    command: "git rev-parse --short HEAD"
+  build_date:
+    command: "date +%y%m%d"
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `value` | str | int | float | No | `null` | Static value for this variable. |
+| `command` | str | No | `null` | Shell command to execute. stdout is captured and stripped as the value. |
+
+### GeneratedSource
+
+A Jinja2 template that is rendered at build time and added to the project.
+
+The template has access to the full resolved project configuration
+and resolved build variables. Reference values explicitly:
+- ``{{ build_variables.version_major }}``
+- ``{{ project_information.project_name }}``
+- ``{{ project_information.device_info.board_name }}``
+
+Example:
+```yaml
+generated_sources:
+  - template: "hdl/build_info_pkg.vhd.j2"
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `template` | str | Yes | `—` | Path to Jinja2 template file, relative to the YAML config file. |
+
 ### BuildConfiguration
 
 Build-time configuration for synthesis and implementation.
@@ -95,8 +139,28 @@ Build-time configuration for synthesis and implementation.
 These are persistent options stored in the config, distinct from
 CLI runtime options like --cores or --clean.
 
+Example:
+```yaml
+build_configuration:
+  artefact_name: "{{ project_information.project_name | upper }}_v{{ build_variables.version_major }}"
+  build_variables:
+    version_major:
+      value: 1
+    version_minor:
+      value: 0
+    git_hash:
+      command: "git rev-parse --short HEAD"
+  generated_sources:
+    - template: "hdl/build_info_pkg.vhd.j2"
+  write_hw_platform:
+    include_bit: true
+```
+
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
+| `artefact_name` | str | No | `null` | Jinja2 template string for the build artefact name. Rendered with the full resolved config and build variables as context.  |
+| `build_variables` | dict[str, [BuildVariable](#buildvariable)] | No | `{}` | Build-time variables resolved before synthesis. Keys are variable names. |
+| `generated_sources` | list[[GeneratedSource](#generatedsource)] | No | `[]` | Jinja2 templates rendered at build time and added as project sources. |
 | `write_hw_platform` | [WriteHwPlatformOptions](#writehwplatformoptions) | No | `WriteHwPlatformOptions(include_bit=False)` | Options for hardware platform file (.xsa) generation. |
 
 ### Constraint
@@ -139,33 +203,6 @@ device_info:
 | `part_name` | str | Yes | `—` | Xilinx FPGA part number (e.g., xc7a35tcpg236-1). |
 | `board_name` | str | Yes | `—` | Human-readable board name for identification. |
 | `board_part` | str | No | `null` | Xilinx board part identifier (e.g., digilentinc.com:arty-a7-35:part0:1.1). |
-
-### Generic
-
-HDL generic/parameter for top-level module.
-
-Example:
-```yaml
-top_level_generics:
-  DATA_WIDTH:
-    type: integer
-    value: 32
-  ENABLE_DEBUG:
-    type: std_logic
-    value: '1'
-  INIT_VECTOR:
-    type: std_logic_vector
-    width: 8
-    value: "0xFF"
-    format: hex
-```
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `type` | str | Yes | `—` | VHDL type (e.g., integer, std_logic, std_logic_vector). |
-| `value` | str | int | float | bool | No | `null` | Value to assign. Type must be compatible with declared type. |
-| `width` | int | No | `null` | Bit width for vector types. |
-| `format` | str | No | `null` | Value format hint ('hex', 'bin', 'dec'). |
 
 ### ShellConfig
 
@@ -327,7 +364,6 @@ project_information:
 | `device_info` | [DeviceInfo](#deviceinfo) | Yes | `—` | FPGA device and board configuration. |
 | `tool` | str | No | `'vivado'` | EDA tool to use for this project (e.g., 'vivado'). |
 | `tool_version` | str | Yes | `—` | Tool version string (e.g., '2020.1'). |
-| `top_level_generics` | dict[str, [Generic](#generic)] | No | `{}` | Generic parameters for top-level module. Keys are generic names. |
 
 ### ProjectConfiguration
 
@@ -363,7 +399,7 @@ set_property -name STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY -value rebuilt -obj
 | `block_designs` | list[[BlockDesign](#blockdesign)] | No | `[]` | Block designs to include. |
 | `synth_options` | dict[str, str] | No | `{}` | Vivado synthesis properties (STEPS.SYNTH_DESIGN.ARGS.*). |
 | `impl_options` | dict[str, str] | No | `{}` | Vivado implementation properties (STEPS.*.ARGS.*). |
-| `build_configuration` | [BuildConfiguration](#buildconfiguration) | No | `BuildConfiguration(write_hw_platform=WriteHwPlatformOptions(include_bit=False))` | Build-time configuration options. |
+| `build_configuration` | [BuildConfiguration](#buildconfiguration) | No | `BuildConfiguration(artefact_name=None, build_variables={}, generated_sources=[], write_hw_platform=WriteHwPlatformOptions(include_bit=False))` | Build-time configuration options. |
 | `hooks` | [HooksConfig](#hooksconfig) | No | `HooksConfig(post_project_create=[], post_project_setup=[], pre_build=[], pre_synthesis=[], post_synthesis=[], pre_implementation=[], post_implementation=[], post_bitstream=[])` | TCL hook points for injecting custom commands at workflow lifecycle stages. |
 | `environment_setup` | dict[str, str] | No | `null` | Pre-processing scripts. Keys: executor, Values: script path. Output KEY=VALUE lines added to env. |
 | `hdlproject_config_version` | str | No | `'4.0.0'` | Configuration schema version. |
@@ -413,17 +449,6 @@ project_information:
     board_part: "my_board_part_0"
   tool: "my_tool_0"
   tool_version: "my_tool_version_0"
-  top_level_generics:
-    my_top_level_generics_key_0:
-      type: "my_type_0"
-      value: "my_value_0"
-      width: 0
-      format: "my_format_0"
-    my_top_level_generics_key_1:
-      type: "my_type_1"
-      value: "my_value_1"
-      width: 1
-      format: "my_format_1"
 hdldepends_config: "my_hdldepends_config_0"
 tools:
   my_tools_key_0: "my_tools_0"
@@ -457,6 +482,17 @@ impl_options:
   my_impl_options_key_0: "my_impl_options_0"
   my_impl_options_key_1: "my_impl_options_1"
 build_configuration:
+  artefact_name: "my_artefact_name_0"
+  build_variables:
+    my_build_variables_key_0:
+      value: "my_value_0"
+      command: "my_command_0"
+    my_build_variables_key_1:
+      value: "my_value_1"
+      command: "my_command_1"
+  generated_sources:
+    - template: "my_template_0"
+    - template: "my_template_1"
   write_hw_platform:
     include_bit: true
 hooks:

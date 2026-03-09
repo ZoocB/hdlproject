@@ -566,6 +566,7 @@ class BuildConfiguration(FlexibleModel):
     Example:
     ```yaml
     build_configuration:
+      artefact_name: "{{ project_information.project_name | upper }}_v{{ build_variables.version_major }}"
       build_variables:
         version_major:
           value: 1
@@ -580,6 +581,13 @@ class BuildConfiguration(FlexibleModel):
     ```
     """
 
+    artefact_name: Optional[str] = Field(
+        default=None,
+        description=(
+            "Jinja2 template string for the build artefact name. "
+            "Rendered with the full resolved config and build variables as context. "
+        ),
+    )
     build_variables: dict[str, BuildVariable] = Field(
         default_factory=dict,
         description="Build-time variables resolved before synthesis. Keys are variable names.",
@@ -754,13 +762,9 @@ class ProjectConfiguration(FlexibleModel):
         # No fallback - must be explicitly configured
         available = []
         if self.tools and tool in self.tools:
-            available.extend(
-                f"{tool}/{v}" for v in self.tools[tool].keys()
-            )
+            available.extend(f"{tool}/{v}" for v in self.tools[tool].keys())
         if tool in global_config.tools:
-            available.extend(
-                f"{tool}/{v}" for v in global_config.tools[tool].keys()
-            )
+            available.extend(f"{tool}/{v}" for v in global_config.tools[tool].keys())
 
         available_str = ", ".join(sorted(set(available))) if available else "none"
         raise ValueError(

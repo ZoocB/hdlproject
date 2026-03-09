@@ -16,7 +16,7 @@ import shutil
 from pathlib import Path
 from typing import Union
 
-from jinja2 import Environment, FileSystemLoader, PackageLoader
+from jinja2 import Environment, FileSystemLoader, PackageLoader, Template
 
 from hdlproject.core.build_variable_resolver import BuildVariableResolver
 from hdlproject.models.resolved import ResolvedProjectConfig, ResolvedOperationPaths
@@ -86,6 +86,11 @@ class TclGenerator:
         # Resolve build variables
         resolved_variables = self._resolve_build_variables(resolved_config)
 
+        # Resolve artefact name template
+        artefact_name = self._resolve_artefact_name(
+            resolved_config, resolved_variables
+        )
+
         # Render user-provided generated source templates
         generated_files = self._render_generated_sources(
             resolved_config, operation_paths, resolved_variables
@@ -98,6 +103,7 @@ class TclGenerator:
         context = self._build_context(
             resolved_config, operation_paths, mode, cores,
             build_steps, resolved_variables, generated_files,
+            artefact_name,
         )
 
         # Render the main workflow template
@@ -128,6 +134,36 @@ class TclGenerator:
 
         logger.info(f"Resolved {len(resolved)} build variable(s)")
         return resolved
+
+    def _resolve_artefact_name(
+        self,
+        config: ResolvedProjectConfig,
+        resolved_variables: dict[str, Union[str, int, float]],
+    ) -> str | None:
+        """Resolve the artefact name from a Jinja2 template string.
+
+        Uses the same context as generated sources: full resolved config
+        plus resolved build variables.
+
+        Args:
+            config: Resolved project configuration
+            resolved_variables: Already-resolved build variables
+
+        Returns:
+            Rendered artefact name string, or None if not configured
+        """
+        template_str = config.build_configuration.artefact_name
+        if not template_str:
+            return None
+
+        template_context = config.model_dump(mode="json", exclude_none=True)
+        template_context["build_variables"] = resolved_variables
+
+        template = Template(template_str)
+        rendered = template.render(**template_context).strip()
+
+        logger.info(f"Resolved artefact name: {rendered}")
+        return rendered
 
     def _render_generated_sources(
         self,
@@ -201,6 +237,7 @@ class TclGenerator:
         build_steps: list[str] | None,
         resolved_variables: dict[str, Union[str, int, float]],
         generated_files: list[Path],
+        artefact_name: str | None = None,
     ) -> dict:
         """Build the Jinja2 template context dict from resolved config."""
         proj_info = config.project_information
@@ -235,6 +272,8 @@ class TclGenerator:
             "build_configuration": config.build_configuration.model_dump(),
             # Build variables (resolved)
             "build_variables": resolved_variables,
+            # Artifact naming
+            "artefact_name": artefact_name,
             # Generated source files to add to project
             "generated_source_files": [str(f) for f in generated_files],
             # Hooks
