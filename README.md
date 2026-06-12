@@ -7,11 +7,12 @@ A Python CLI for managing Xilinx Vivado FPGA projects with automatic dependency 
 
 ## Features
 
-- **Unified CLI** — Single `hdlproject` command with interactive menu or batch mode
+- **Fast keyboard TUI** — Quick prompt-driven menu (select projects → operation → options), or scriptable batch mode
 - **Parallel Builds** — Process multiple projects concurrently
+- **Cancellable** — Ctrl+C stops a running build cleanly; no orphaned Vivado processes
 - **Dependency Resolution** — Automatic HDL compile order via [hdldepends](https://github.com/pevhall/hdldepends)
 - **YAML Configuration** — Inheritance, environment variables, and validation
-- **Real-time Status** — Live progress tracking with warning/error aggregation
+- **Real-time Status** — Live per-step progress with warning/error aggregation
 
 ## Prerequisites
 
@@ -83,7 +84,14 @@ my_repo/
 hdlproject
 ```
 
-Launches a TUI menu for project selection and operation configuration.
+Launches a fast keyboard-driven menu:
+
+1. Select one or more projects — **space** to toggle, **enter** to confirm.
+2. Choose an operation (build / open / export / publish) with the arrow keys.
+3. Answer the operation prompts (e.g. clean? cores?).
+
+A live status tree then renders per-step progress during the run. Press **Ctrl+C**
+to cancel cleanly; build failures are reported before returning to the menu.
 
 ### Batch Mode
 
@@ -149,6 +157,21 @@ These directories are safe to delete and should be gitignored.
 ## Documentation
 
 - [YAML Configuration Guide](docs/yaml-configuration-guide.md) — Full configuration schema reference
+- [Architecture](docs/architecture.md) — How the execution core, progress sinks, and front-ends fit together
+
+## Development
+
+```bash
+pip install -e ".[dev]"   # editable install with dev tools
+
+pytest                    # run the test suite
+ruff check src/           # lint
+mypy src/hdlproject       # type-check (advisory)
+```
+
+The configuration schema is frozen by a test (`test/unit/test_schema_freeze.py`):
+intentional, additive schema changes require regenerating the baseline. See that
+test's docstring.
 
 ## License
 

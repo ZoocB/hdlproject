@@ -1,0 +1,12 @@
+library ieee;
+use ieee.std_logic_1164.all;
+
+package top_pkg is
+
+    constant C_VERSION_MAJOR : integer := {{ build_variables.version_major }};
+    constant C_VERSION_MINOR : integer := {{ build_variables.version_minor }};
+    constant C_PROJECT_NAME  : string  := "{{ project_information.project_name }}";
+    constant C_DEVICE_PART   : string  := "{{ project_information.device_info.part_name }}";
+    constant C_BOARD_NAME    : string  := "{{ project_information.device_info.board_name }}";
+
+end package top_pkg;

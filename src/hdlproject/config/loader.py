@@ -4,16 +4,17 @@ This module provides a single entry point for loading all configuration:
 global configuration, project configuration, and creating runtime contexts.
 """
 
-import yaml
 from pathlib import Path
 from typing import Optional
 
-from hdlproject.models.models import GlobalConfiguration, ProjectConfiguration
-from hdlproject.models.resolved import ResolvedProjectConfig
+import yaml
+
 from hdlproject.config.config_resolver import YAMLConfigLoader
 from hdlproject.config.resolver import ConfigResolver
-from hdlproject.runtime.context import RuntimeEnvironment
 from hdlproject.constants import GLOBAL_CONFIG_FILENAME, PROJECT_CONFIG_FILENAME
+from hdlproject.models import GlobalConfiguration, ProjectConfiguration
+from hdlproject.models.resolved import ResolvedProjectConfig
+from hdlproject.runtime.context import RuntimeEnvironment
 from hdlproject.utils.logging_manager import get_logger
 
 logger = get_logger(__name__)
@@ -205,8 +206,8 @@ class ConfigLoader:
             setup_config: Dict mapping executor to script path
             base_dir: Base directory for relative script paths
         """
-        import subprocess
         import os
+        import subprocess
 
         logger.info("Executing environment setup scripts...")
 

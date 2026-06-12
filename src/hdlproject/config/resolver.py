@@ -8,16 +8,16 @@ derived values pre-computed.
 from pathlib import Path
 from typing import Optional
 
-from hdlproject.models.models import (
+from hdlproject.models import (
     GlobalConfiguration,
     ProjectConfiguration,
     ToolExecutor,
 )
 from hdlproject.models.resolved import (
-    ResolvedProjectConfig,
-    ResolvedPaths,
-    ResolvedOperationPaths,
     KNOWN_OPERATIONS,
+    ResolvedOperationPaths,
+    ResolvedPaths,
+    ResolvedProjectConfig,
     get_hdlproject_dir_name,
 )
 from hdlproject.utils.logging_manager import get_logger

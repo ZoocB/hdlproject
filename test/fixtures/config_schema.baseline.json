@@ -1,0 +1,687 @@
+{
+  "GlobalConfiguration": {
+    "$defs": {
+      "ShellConfig": {
+        "additionalProperties": true,
+        "description": "Shell configuration for custom execution environments.\n\nUsed when commands need to run in a custom shell (e.g., Docker container).\nWhen `heredoc` is true, commands are passed via stdin with `set -e` for\nerror handling.\n\nExample:\n```yaml\nshell:\n  invoke: \"docker_tool vivado-2023.2\"\n  heredoc: true\n  mount_repo_root: true\n  options:\n    - \"--pull=never\"\n```",
+        "properties": {
+          "heredoc": {
+            "default": false,
+            "description": "Use heredoc/stdin mode. Commands passed via stdin with 'set -e'.",
+            "title": "Heredoc",
+            "type": "boolean"
+          },
+          "invoke": {
+            "description": "Command to start the shell (e.g., 'docker_tool vivado-2023.2')",
+            "title": "Invoke",
+            "type": "string"
+          },
+          "mount_repo_root": {
+            "default": false,
+            "description": "Mount repository root into container. Adds '--volume {repo_root}:{repo_root}' to options.",
+            "title": "Mount Repo Root",
+            "type": "boolean"
+          },
+          "options": {
+            "description": "Additional options passed to the shell command after '--'. For docker_tool: docker/podman options like '--pull=never'.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "invoke"
+        ],
+        "title": "ShellConfig",
+        "type": "object"
+      },
+      "ToolExecutor": {
+        "additionalProperties": true,
+        "description": "Configuration for executing a specific tool version.\n\nDefines how to execute a tool (e.g., Vivado) and related utilities\n(like hdldepends) for a specific version. Supports both local\ninstallations and containerised environments.\n\nThe execution flow is: [shell] \u2192 [setup] \u2192 [injected commands] \u2192 [executable]\n\nExample:\n```yaml\ntools:\n  vivado:\n    # Local installation\n    \"2020.1\":\n      setup:\n        - \"source /tools/Xilinx/Vivado/2020.1/settings64.sh\"\n      executable: \"vivado\"\n\n    # Docker container with heredoc and repo mounting\n    \"2023.2\":\n      shell:\n        invoke: \"docker_tool vivado-2023.2\"\n        heredoc: true\n        mount_repo_root: true\n        options:\n          - \"--pull=never\"\n      setup:\n        - \"source /opt/Xilinx/Vivado/2023.2/settings64.sh\"\n        - 'REPO_ROOT=\"$(git rev-parse --show-toplevel)\"'\n        - 'source \"${REPO_ROOT}/venv/bin/activate\"'\n      executable: \"vivado\"\n```",
+        "properties": {
+          "executable": {
+            "description": "Command to invoke the tool (e.g., 'vivado')",
+            "title": "Executable",
+            "type": "string"
+          },
+          "setup": {
+            "description": "Setup commands to run first (e.g., source settings.sh). Executed before any injected commands like hdldepends.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Setup",
+            "type": "array"
+          },
+          "shell": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ShellConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Custom shell configuration. If not set, uses /bin/bash with && chaining. Use this for Docker or other containerised environments."
+          }
+        },
+        "required": [
+          "executable"
+        ],
+        "title": "ToolExecutor",
+        "type": "object"
+      }
+    },
+    "additionalProperties": true,
+    "description": "Global repository configuration (`hdlproject_global_config.yaml`).\n\nLocated at repository root. Settings can be overridden at project level.\n\nExample:\n```yaml\nproject_dir: \"fw/prj\"\nhdldepends_config: \"hdldepends.json\"\ndefault_cores: 2\nmax_parallel_builds: 4\ncompile_order_format: \"json\"\n\ntools:\n  vivado:\n    \"2020.1\":\n      setup:\n        - \"source /tools/Xilinx/Vivado/2020.1/settings64.sh\"\n      executable: \"vivado\"\n    \"2023.2\":\n      shell:\n        invoke: \"docker_tool vivado-2023.2\"\n        heredoc: true\n      setup:\n        - \"source /opt/Xilinx/Vivado/2023.2/settings64.sh\"\n      executable: \"vivado\"\n```",
+    "properties": {
+      "compile_order_format": {
+        "default": "json",
+        "description": "Output format for compile order files ('json' or 'tcl').",
+        "title": "Compile Order Format",
+        "type": "string"
+      },
+      "default_cores": {
+        "default": 2,
+        "description": "Default CPU cores per project for synthesis/implementation.",
+        "title": "Default Cores",
+        "type": "integer"
+      },
+      "hdldepends_config": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Default hdldepends config path, relative to repository root. Overridable per-project.",
+        "title": "Hdldepends Config"
+      },
+      "max_parallel_builds": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Maximum parallel builds. If None, calculated from system resources.",
+        "title": "Max Parallel Builds"
+      },
+      "project_dir": {
+        "description": "Base directory containing project directories, relative to repository root.",
+        "title": "Project Dir",
+        "type": "string"
+      },
+      "tools": {
+        "additionalProperties": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ToolExecutor"
+          },
+          "type": "object"
+        },
+        "description": "Tool execution configs keyed by tool name then version. e.g., tools.vivado.'2020.1'. Overridable per-project.",
+        "title": "Tools",
+        "type": "object"
+      }
+    },
+    "required": [
+      "project_dir"
+    ],
+    "title": "GlobalConfiguration",
+    "type": "object"
+  },
+  "ProjectConfiguration": {
+    "$defs": {
+      "BlockDesign": {
+        "additionalProperties": true,
+        "description": "Block design configuration.\n\nExample:\n```yaml\nblock_designs:\n  - file: processing_system.bd\n    commands:\n      - \"regenerate_bd_layout\"\n      - \"validate_bd_design\"\n```",
+        "properties": {
+          "commands": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Additional TCL commands to execute after loading.",
+            "title": "Commands"
+          },
+          "file": {
+            "description": "Path to block design file (.tcl or .bd), relative to config file.",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "BlockDesign",
+        "type": "object"
+      },
+      "BuildConfiguration": {
+        "additionalProperties": true,
+        "description": "Build-time configuration for synthesis and implementation.\n\nThese are persistent options stored in the config, distinct from\nCLI runtime options like --cores or --clean.\n\nExample:\n```yaml\nbuild_configuration:\n  artefact_name: \"{{ project_information.project_name | upper }}_v{{ build_variables.version_major }}\"\n  build_variables:\n    version_major:\n      value: 1\n    version_minor:\n      value: 0\n    git_hash:\n      command: \"git rev-parse --short HEAD\"\n  generated_sources:\n    - template: \"hdl/build_info_pkg.vhd.j2\"\n  write_hw_platform:\n    include_bit: true\n```",
+        "properties": {
+          "artefact_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Jinja2 template string for the build artefact name. Rendered with the full resolved config and build variables as context. ",
+            "title": "Artefact Name"
+          },
+          "build_variables": {
+            "additionalProperties": {
+              "$ref": "#/$defs/BuildVariable"
+            },
+            "description": "Build-time variables resolved before synthesis. Keys are variable names.",
+            "title": "Build Variables",
+            "type": "object"
+          },
+          "generated_sources": {
+            "description": "Jinja2 templates rendered at build time and added as project sources.",
+            "items": {
+              "$ref": "#/$defs/GeneratedSource"
+            },
+            "title": "Generated Sources",
+            "type": "array"
+          },
+          "write_hw_platform": {
+            "$ref": "#/$defs/WriteHwPlatformOptions",
+            "description": "Options for hardware platform file (.xsa) generation."
+          }
+        },
+        "title": "BuildConfiguration",
+        "type": "object"
+      },
+      "BuildVariable": {
+        "additionalProperties": true,
+        "description": "A build-time variable resolved before synthesis.\n\nUse `value` for static data or `command` for dynamically computed data.\nExactly one of `value` or `command` must be set.\n\nExample:\n```yaml\nbuild_variables:\n  version_major:\n    value: 1\n  git_hash:\n    command: \"git rev-parse --short HEAD\"\n  build_date:\n    command: \"date +%y%m%d\"\n```",
+        "properties": {
+          "command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Shell command to execute. stdout is captured and stripped as the value.",
+            "title": "Command"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Static value for this variable.",
+            "title": "Value"
+          }
+        },
+        "title": "BuildVariable",
+        "type": "object"
+      },
+      "Constraint": {
+        "additionalProperties": true,
+        "description": "Constraint file configuration.\n\nExample:\n```yaml\nconstraints:\n  - file: timing.xdc\n  - file: pins.xdc\n    fileset: constrs_1\n  - file: debug.xdc\n    execution: immediate\n    properties:\n      USED_IN_SYNTHESIS: false\n```",
+        "properties": {
+          "execution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Options: `immediate` - Executes the script immediate upon processing it and doesnt add it to the project.",
+            "title": "Execution"
+          },
+          "file": {
+            "description": "Path to constraint file (.xdc), relative to config file.",
+            "title": "File",
+            "type": "string"
+          },
+          "fileset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Target fileset (e.g., constrs_1). Defaults to main constraint fileset.",
+            "title": "Fileset"
+          },
+          "properties": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Additional Vivado properties for the constraint file.",
+            "title": "Properties"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Constraint",
+        "type": "object"
+      },
+      "DeviceInfo": {
+        "additionalProperties": true,
+        "description": "FPGA device and board configuration.\n\nExample:\n```yaml\ndevice_info:\n  part_name: xc7z020clg400-1\n  board_name: Arty_Z7_20\n  board_part: digilentinc.com:arty-z7-20:part0:1.1\n```",
+        "properties": {
+          "board_name": {
+            "description": "Human-readable board name for identification.",
+            "title": "Board Name",
+            "type": "string"
+          },
+          "board_part": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Xilinx board part identifier (e.g., digilentinc.com:arty-a7-35:part0:1.1).",
+            "title": "Board Part"
+          },
+          "part_name": {
+            "description": "Xilinx FPGA part number (e.g., xc7a35tcpg236-1).",
+            "title": "Part Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "part_name",
+          "board_name"
+        ],
+        "title": "DeviceInfo",
+        "type": "object"
+      },
+      "GeneratedSource": {
+        "additionalProperties": true,
+        "description": "A Jinja2 template that is rendered at build time and added to the project.\n\nThe template has access to the full resolved project configuration\nand resolved build variables. Reference values explicitly:\n- ``{{ build_variables.version_major }}``\n- ``{{ project_information.project_name }}``\n- ``{{ project_information.device_info.board_name }}``\n\nExample:\n```yaml\ngenerated_sources:\n  - template: \"hdl/build_info_pkg.vhd.j2\"\n```",
+        "properties": {
+          "template": {
+            "description": "Path to Jinja2 template file, relative to the YAML config file.",
+            "title": "Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template"
+        ],
+        "title": "GeneratedSource",
+        "type": "object"
+      },
+      "HooksConfig": {
+        "additionalProperties": true,
+        "description": "TCL hook points for injecting custom commands at lifecycle stages.\n\nEach hook is a list of TCL commands executed at that point in the workflow.\nHooks run inside the Vivado TCL interpreter and have access to the full\nVivado command set plus all project context variables.\n\nExample:\n```yaml\nhooks:\n  post_project_create:\n    - \"set_property IP_REPO_PATHS /path/to/custom_ips [current_project]\"\n    - \"update_ip_catalog\"\n  pre_synthesis:\n    - 'source \"$env(REPO_ROOT)/scripts/pre_synth_checks.tcl\"'\n  post_implementation:\n    - \"report_utilization -file utilization.rpt\"\n  post_bitstream:\n    - 'source \"$env(REPO_ROOT)/scripts/post_build.tcl\"'\n```",
+        "properties": {
+          "post_bitstream": {
+            "description": "Run after bitstream generation and artefact packaging.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Post Bitstream",
+            "type": "array"
+          },
+          "post_implementation": {
+            "description": "Run after implementation completes successfully.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Post Implementation",
+            "type": "array"
+          },
+          "post_project_create": {
+            "description": "Run after project creation and standard property setup.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Post Project Create",
+            "type": "array"
+          },
+          "post_project_setup": {
+            "description": "Run after all project components (sources, constraints, IPs, BDs) are loaded.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Post Project Setup",
+            "type": "array"
+          },
+          "post_synthesis": {
+            "description": "Run after synthesis completes successfully.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Post Synthesis",
+            "type": "array"
+          },
+          "pre_build": {
+            "description": "Run before the build flow starts (before synthesis).",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pre Build",
+            "type": "array"
+          },
+          "pre_implementation": {
+            "description": "Run immediately before implementation launch.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pre Implementation",
+            "type": "array"
+          },
+          "pre_synthesis": {
+            "description": "Run immediately before synthesis launch.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pre Synthesis",
+            "type": "array"
+          }
+        },
+        "title": "HooksConfig",
+        "type": "object"
+      },
+      "ProjectInformation": {
+        "additionalProperties": true,
+        "description": "Core project identification and settings.\n\nExample:\n```yaml\nproject_information:\n  project_name: my_project\n  top_level_file_name: top_level\n  tool: vivado\n  tool_version: \"2020.1\"\n  device_info:\n    part_name: xc7z020clg400-1\n    board_name: Arty_Z7_20\n```",
+        "properties": {
+          "device_info": {
+            "$ref": "#/$defs/DeviceInfo",
+            "description": "FPGA device and board configuration."
+          },
+          "project_name": {
+            "description": "Tool project name. Used for project file and output naming.",
+            "title": "Project Name",
+            "type": "string"
+          },
+          "tool": {
+            "default": "vivado",
+            "description": "EDA tool to use for this project (e.g., 'vivado').",
+            "title": "Tool",
+            "type": "string"
+          },
+          "tool_version": {
+            "description": "Tool version string (e.g., '2020.1').",
+            "title": "Tool Version",
+            "type": "string"
+          },
+          "top_level_file_name": {
+            "description": "Top-level HDL module filename (without path or extension).",
+            "title": "Top Level File Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "project_name",
+          "top_level_file_name",
+          "device_info",
+          "tool_version"
+        ],
+        "title": "ProjectInformation",
+        "type": "object"
+      },
+      "ShellConfig": {
+        "additionalProperties": true,
+        "description": "Shell configuration for custom execution environments.\n\nUsed when commands need to run in a custom shell (e.g., Docker container).\nWhen `heredoc` is true, commands are passed via stdin with `set -e` for\nerror handling.\n\nExample:\n```yaml\nshell:\n  invoke: \"docker_tool vivado-2023.2\"\n  heredoc: true\n  mount_repo_root: true\n  options:\n    - \"--pull=never\"\n```",
+        "properties": {
+          "heredoc": {
+            "default": false,
+            "description": "Use heredoc/stdin mode. Commands passed via stdin with 'set -e'.",
+            "title": "Heredoc",
+            "type": "boolean"
+          },
+          "invoke": {
+            "description": "Command to start the shell (e.g., 'docker_tool vivado-2023.2')",
+            "title": "Invoke",
+            "type": "string"
+          },
+          "mount_repo_root": {
+            "default": false,
+            "description": "Mount repository root into container. Adds '--volume {repo_root}:{repo_root}' to options.",
+            "title": "Mount Repo Root",
+            "type": "boolean"
+          },
+          "options": {
+            "description": "Additional options passed to the shell command after '--'. For docker_tool: docker/podman options like '--pull=never'.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Options",
+            "type": "array"
+          }
+        },
+        "required": [
+          "invoke"
+        ],
+        "title": "ShellConfig",
+        "type": "object"
+      },
+      "ToolExecutor": {
+        "additionalProperties": true,
+        "description": "Configuration for executing a specific tool version.\n\nDefines how to execute a tool (e.g., Vivado) and related utilities\n(like hdldepends) for a specific version. Supports both local\ninstallations and containerised environments.\n\nThe execution flow is: [shell] \u2192 [setup] \u2192 [injected commands] \u2192 [executable]\n\nExample:\n```yaml\ntools:\n  vivado:\n    # Local installation\n    \"2020.1\":\n      setup:\n        - \"source /tools/Xilinx/Vivado/2020.1/settings64.sh\"\n      executable: \"vivado\"\n\n    # Docker container with heredoc and repo mounting\n    \"2023.2\":\n      shell:\n        invoke: \"docker_tool vivado-2023.2\"\n        heredoc: true\n        mount_repo_root: true\n        options:\n          - \"--pull=never\"\n      setup:\n        - \"source /opt/Xilinx/Vivado/2023.2/settings64.sh\"\n        - 'REPO_ROOT=\"$(git rev-parse --show-toplevel)\"'\n        - 'source \"${REPO_ROOT}/venv/bin/activate\"'\n      executable: \"vivado\"\n```",
+        "properties": {
+          "executable": {
+            "description": "Command to invoke the tool (e.g., 'vivado')",
+            "title": "Executable",
+            "type": "string"
+          },
+          "setup": {
+            "description": "Setup commands to run first (e.g., source settings.sh). Executed before any injected commands like hdldepends.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Setup",
+            "type": "array"
+          },
+          "shell": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ShellConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Custom shell configuration. If not set, uses /bin/bash with && chaining. Use this for Docker or other containerised environments."
+          }
+        },
+        "required": [
+          "executable"
+        ],
+        "title": "ToolExecutor",
+        "type": "object"
+      },
+      "WriteHwPlatformOptions": {
+        "additionalProperties": true,
+        "description": "Options for write_hw_platform Vivado command.\n\nExample:\n```yaml\nbuild_configuration:\n  write_hw_platform:\n    include_bit: true\n```",
+        "properties": {
+          "include_bit": {
+            "default": false,
+            "description": "Include bitstream in hardware platform file (.xsa).",
+            "title": "Include Bit",
+            "type": "boolean"
+          }
+        },
+        "title": "WriteHwPlatformOptions",
+        "type": "object"
+      }
+    },
+    "additionalProperties": true,
+    "description": "Root project configuration (`hdlproject_project_config.yaml`).\n\nLocated in each project directory. This is the top-level model representing\na complete project configuration file.\n\nExample for `synth_options` and `impl_options` - these map directly to\nVivado `set_property` commands:\n\n```yaml\nsynth_options:\n  STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY: rebuilt\n  STEPS.SYNTH_DESIGN.ARGS.DIRECTIVE: AreaOptimized_high\n\nimpl_options:\n  STEPS.OPT_DESIGN.ARGS.DIRECTIVE: Explore\n  STEPS.PLACE_DESIGN.ARGS.DIRECTIVE: ExtraNetDelay_high\n```\n\nEach generates TCL like:\n```tcl\nset_property -name STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY -value rebuilt -objects [get_runs synth_1]\n```",
+    "properties": {
+      "block_designs": {
+        "description": "Block designs to include.",
+        "items": {
+          "$ref": "#/$defs/BlockDesign"
+        },
+        "title": "Block Designs",
+        "type": "array"
+      },
+      "build_configuration": {
+        "$ref": "#/$defs/BuildConfiguration",
+        "description": "Build-time configuration options."
+      },
+      "constraints": {
+        "description": "Constraint files to include.",
+        "items": {
+          "$ref": "#/$defs/Constraint"
+        },
+        "title": "Constraints",
+        "type": "array"
+      },
+      "environment_setup": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Pre-processing scripts. Keys: executor, Values: script path. Output KEY=VALUE lines added to env.",
+        "title": "Environment Setup"
+      },
+      "hdldepends_config": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Project-specific hdldepends config path. Overrides global setting.",
+        "title": "Hdldepends Config"
+      },
+      "hdlproject_config_version": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": "4.0.0",
+        "description": "Configuration schema version.",
+        "title": "Hdlproject Config Version"
+      },
+      "hooks": {
+        "$ref": "#/$defs/HooksConfig",
+        "description": "TCL hook points for injecting custom commands at workflow lifecycle stages."
+      },
+      "impl_options": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "Vivado implementation properties (STEPS.*.ARGS.*).",
+        "title": "Impl Options",
+        "type": "object"
+      },
+      "project_information": {
+        "$ref": "#/$defs/ProjectInformation",
+        "description": "Core project identification and settings."
+      },
+      "synth_options": {
+        "additionalProperties": {
+          "type": "string"
+        },
+        "description": "Vivado synthesis properties (STEPS.SYNTH_DESIGN.ARGS.*).",
+        "title": "Synth Options",
+        "type": "object"
+      },
+      "tools": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "additionalProperties": {
+                "$ref": "#/$defs/ToolExecutor"
+              },
+              "type": "object"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "description": "Project-specific tool executors. Overrides global settings. Keyed by tool name then version.",
+        "title": "Tools"
+      }
+    },
+    "required": [
+      "project_information"
+    ],
+    "title": "ProjectConfiguration",
+    "type": "object"
+  }
+}

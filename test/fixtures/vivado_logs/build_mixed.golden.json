@@ -1,0 +1,137 @@
+[
+  {
+    "type": "INFO",
+    "message": "# Representative Vivado build output covering the parser's staged cases."
+  },
+  {
+    "type": "INFO",
+    "message": "# Comment lines like this one are still fed to the parser (it does not skip them);"
+  },
+  {
+    "type": "INFO",
+    "message": "# they exercise the INFO default path."
+  },
+  {
+    "type": "INFO",
+    "message": "vivado -mode batch -notrace -source build.tcl"
+  },
+  {
+    "type": "INFO",
+    "message": ""
+  },
+  {
+    "type": "PROJECT_CONTEXT",
+    "message": "[HDLPROJECT_PROJECT_CONTEXT] name=adder_project_1_v1_0",
+    "project_context_name": "adder_project_1_v1_0"
+  },
+  {
+    "type": "STEP_UPDATE",
+    "message": "[HDLPROJECT_STEP_SUCCESS] handle_xcis::process_xcis",
+    "step_name": "Processing IP Cores",
+    "step_result": "success",
+    "is_tcl_step": true
+  },
+  {
+    "type": "STEP_UPDATE",
+    "message": "[HDLPROJECT_STEP_SUCCESS] handle_source_files::process_source_files",
+    "step_name": "Loading HDL Sources",
+    "step_result": "success",
+    "is_tcl_step": true
+  },
+  {
+    "type": "INFO",
+    "message": "INFO: [Common 17-206] Exiting Tcl shell is not relevant here"
+  },
+  {
+    "type": "INFO",
+    "message": "This line mentions the word error_msg which is a known false positive"
+  },
+  {
+    "type": "INFO",
+    "message": "no error was found in this benign line"
+  },
+  {
+    "type": "STEP_UPDATE",
+    "message": "[HDLPROJECT_STEP_WARNING] handle_constraints::process_constraints [W:2 E:0]",
+    "step_name": "Loading Constraints",
+    "step_result": "warning",
+    "warning_count": 2,
+    "is_tcl_step": true
+  },
+  {
+    "type": "WARNING",
+    "message": "WARNING: [Constraints 18-5210] No constraint matched net foo"
+  },
+  {
+    "type": "CRITICAL_WARNING",
+    "message": "CRITICAL WARNING: [Vivado 12-1387] No clock found for input port"
+  },
+  {
+    "type": "STEP_UPDATE",
+    "message": "[HDLPROJECT_STEP_SUCCESS] handle_source_files::set_top_level",
+    "step_name": "Setting Top Level",
+    "step_result": "success",
+    "is_tcl_step": true
+  },
+  {
+    "type": "STEP_UPDATE",
+    "message": "Launching Runs -- Synthesis",
+    "step_name": "Synthesis",
+    "is_step_start": true
+  },
+  {
+    "type": "WARNING",
+    "message": "WARNING: [Synth 8-3331] design has unconnected port q"
+  },
+  {
+    "type": "STEP_UPDATE",
+    "message": "synth_design completed successfully",
+    "step_name": "Synthesis",
+    "step_result": "success"
+  },
+  {
+    "type": "STEP_UPDATE",
+    "message": "Command: opt_design",
+    "step_name": "Optimization",
+    "is_step_start": true
+  },
+  {
+    "type": "STEP_UPDATE",
+    "message": "opt_design completed",
+    "step_name": "Optimization",
+    "step_result": "success"
+  },
+  {
+    "type": "STEP_UPDATE",
+    "message": "Command: place_design",
+    "step_name": "Placement",
+    "is_step_start": true
+  },
+  {
+    "type": "ERROR",
+    "message": "ERROR: [Place 30-58] IO placement is infeasible"
+  },
+  {
+    "type": "STEP_UPDATE",
+    "message": "place_design failed",
+    "step_name": "Placement",
+    "is_failure": true,
+    "step_result": "error"
+  },
+  {
+    "type": "STEP_UPDATE",
+    "message": "[HDLPROJECT_STEP_ERROR] handle_bds::process_bds [W:1 E:3]",
+    "step_name": "Processing Block Designs",
+    "is_failure": true,
+    "step_result": "error",
+    "warning_count": 1,
+    "error_count": 3,
+    "is_tcl_step": true
+  },
+  {
+    "type": "TIMING_RESULT",
+    "message": "[HDLPROJECT_TIMING_RESULT] status=FAILED report=/work/build/timing/impl_timing.rpt",
+    "timing_passed": false,
+    "timing_report_path": "/work/build/timing/impl_timing.rpt"
+  }
+]

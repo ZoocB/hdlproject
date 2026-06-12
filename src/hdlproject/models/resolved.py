@@ -10,17 +10,16 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from hdlproject.models.models import (
-    ProjectInformation,
-    Constraint,
+from hdlproject.models.build import (
     BlockDesign,
     BuildConfiguration,
+    Constraint,
     HooksConfig,
-    ToolExecutor,
 )
-
+from hdlproject.models.device import ProjectInformation
+from hdlproject.models.tool import ToolExecutor
 
 # Known operations for pre-computing paths
 KNOWN_OPERATIONS = ("build", "export", "open")

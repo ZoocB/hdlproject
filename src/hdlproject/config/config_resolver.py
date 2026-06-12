@@ -4,9 +4,9 @@ This module handles only the YAML loading and inheritance processing.
 Pydantic validation is done by the ConfigLoader after inheritance is resolved.
 """
 
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, Set
-from copy import deepcopy
 
 import yaml
 

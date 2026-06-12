@@ -1,0 +1,12 @@
+{
+  "vhdl_files_glob@2008": [
+    "./files/vhdl/**/*.vhd"
+  ],
+  "verilog_files_glob": [
+    "./files/verilog/**/*.v"
+  ],
+  "ext_files_glob": [
+    "./files/constraints/**/*.xdc"
+  ],
+  "ignore_libs": ["ieee", "std", "unisim"]
+}

@@ -10,8 +10,8 @@ from hdlproject.handlers.base.handler import BaseHandler
 from hdlproject.handlers.base.operation_config import OperationConfig
 from hdlproject.handlers.registry import HandlerInfo, register_handler
 from hdlproject.runtime.context import ExecutionContext, SingleProjectExecution
-from hdlproject.utils.vivado_output_parser import StepPattern
 from hdlproject.utils.logging_manager import get_project_logger
+from hdlproject.utils.vivado_output_parser import StepPattern
 
 # Valid build steps in execution order
 VALID_BUILD_STEPS = ["synthesis", "implementation", "bitstream"]
@@ -140,6 +140,7 @@ class BuildHandler(BaseHandler):
             cores=context.handler_options.cores,
             extra_commands=extra_commands,
             build_steps=context.handler_options.steps,
+            cancel_token=context.services.cancel_token,
         )
 
         if not result.success:

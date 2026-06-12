@@ -3,8 +3,8 @@
 
 import sys
 
-from hdlproject.core.application import Application
 from hdlproject.cli.parser import create_parser
+from hdlproject.core.application import Application
 from hdlproject.ui.menu import ProjectManagementMenu
 from hdlproject.utils.logging_manager import get_logger
 
@@ -68,9 +68,8 @@ def _execute_batch_command(app: Application, args) -> int:
 
 
 def _run_interactive_menu(app: Application, args) -> int:
-    """Run interactive menu mode"""
-    menu = ProjectManagementMenu(app, args)
-    menu.run()
+    """Run the interactive keyboard-driven menu."""
+    ProjectManagementMenu(app, args).run()
     return 0
 
 

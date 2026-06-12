@@ -1,0 +1,25 @@
+# Representative Vivado build output covering the parser's staged cases.
+# Comment lines like this one are still fed to the parser (it does not skip them);
+# they exercise the INFO default path.
+vivado -mode batch -notrace -source build.tcl
+
+[HDLPROJECT_PROJECT_CONTEXT] name=adder_project_1_v1_0
+[HDLPROJECT_STEP_SUCCESS] handle_xcis::process_xcis
+[HDLPROJECT_STEP_SUCCESS] handle_source_files::process_source_files
+INFO: [Common 17-206] Exiting Tcl shell is not relevant here
+This line mentions the word error_msg which is a known false positive
+no error was found in this benign line
+[HDLPROJECT_STEP_WARNING] handle_constraints::process_constraints [W:2 E:0]
+WARNING: [Constraints 18-5210] No constraint matched net foo
+CRITICAL WARNING: [Vivado 12-1387] No clock found for input port
+[HDLPROJECT_STEP_SUCCESS] handle_source_files::set_top_level
+Launching Runs -- Synthesis
+WARNING: [Synth 8-3331] design has unconnected port q
+synth_design completed successfully
+Command: opt_design
+opt_design completed
+Command: place_design
+ERROR: [Place 30-58] IO placement is infeasible
+place_design failed
+[HDLPROJECT_STEP_ERROR] handle_bds::process_bds [W:1 E:3]
+[HDLPROJECT_TIMING_RESULT] status=FAILED report=/work/build/timing/impl_timing.rpt

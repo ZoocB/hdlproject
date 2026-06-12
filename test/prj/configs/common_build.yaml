@@ -1,0 +1,14 @@
+build_configuration:
+  artefact_name: "{{ project_information.project_name | upper }}_{{ project_information.device_info.board_name | upper }}_v{{ build_variables.version_major }}.{{ build_variables.version_minor }}"
+  generated_sources:
+    - template: "../configs/templates/top_pkg.vhd.j2"
+  write_hw_platform:
+    include_bit: false
+
+synth_options:
+  STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY: rebuilt
+  STEPS.SYNTH_DESIGN.ARGS.ASSERT: "true"
+
+constraints:
+  - file: ../../files/constraints/pins_arty_z7.xdc
+  - file: ../../files/constraints/timing.xdc

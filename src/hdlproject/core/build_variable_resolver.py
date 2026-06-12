@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 from typing import Union
 
-from hdlproject.models.models import BuildVariable
+from hdlproject.models import BuildVariable
 from hdlproject.utils.logging_manager import get_logger
 
 logger = get_logger(__name__)

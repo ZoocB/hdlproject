@@ -1,0 +1,7 @@
+project_information:
+  device_info:
+    part_name: xc7z020clg400-1
+    board_name: Arty_Z7_20
+    board_part: digilentinc.com:arty-z7-20:part0:1.1
+  tool: vivado
+  tool_version: "2023.2"

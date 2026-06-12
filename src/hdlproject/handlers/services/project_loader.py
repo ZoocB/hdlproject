@@ -5,9 +5,9 @@ This module provides a service layer for loading projects using the
 ConfigLoader and returning ResolvedProjectConfig objects.
 """
 
-from hdlproject.models.models import GlobalConfiguration
-from hdlproject.models.resolved import ResolvedProjectConfig
 from hdlproject.config.loader import ConfigLoader
+from hdlproject.models import GlobalConfiguration
+from hdlproject.models.resolved import ResolvedProjectConfig
 from hdlproject.utils.logging_manager import get_logger
 
 logger = get_logger(__name__)

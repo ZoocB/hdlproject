@@ -9,17 +9,20 @@ Execution flow:
 """
 
 import os
-import subprocess
 import shlex
-from pathlib import Path
+import subprocess
+import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
-from hdlproject.models.resolved import ResolvedProjectConfig, ResolvedOperationPaths
+from hdlproject.backends import get_tool_backend
+from hdlproject.core.cancellation import CancellationToken, terminate_process_group
 from hdlproject.core.output_processor import VivadoOutputProcessor
-from hdlproject.utils.vivado_output_parser import VivadoOutputParser, StepPattern
-from hdlproject.core.tcl_generator import TclGenerator
+from hdlproject.core.progress import ProgressSink
+from hdlproject.models.resolved import ResolvedOperationPaths, ResolvedProjectConfig
 from hdlproject.utils.logging_manager import get_logger, get_project_logger
+from hdlproject.utils.vivado_output_parser import StepPattern, VivadoOutputParser
 
 logger = get_logger(__name__)
 
@@ -31,6 +34,7 @@ class ExecutionResult:
     success: bool
     error_lines: list[str]
     exit_code: int = 0
+    cancelled: bool = False
 
 
 class ToolExecutorService:
@@ -59,7 +63,7 @@ class ToolExecutorService:
         log_path: Path,
         shell_args: list[str],
         stdin_content: Optional[str],
-        status_display,
+        status_display: Optional[ProgressSink],
         exit_code: int,
     ) -> ExecutionResult:
         """Handle execution failure with consistent logging and status updates."""
@@ -84,16 +88,45 @@ class ToolExecutorService:
             exit_code=exit_code,
         )
 
+    def _start_cancel_watcher(
+        self,
+        process: subprocess.Popen,
+        cancel_token: Optional[CancellationToken],
+        project_logger,
+    ) -> Optional[threading.Thread]:
+        """Start a daemon thread that kills the process group on cancellation.
+
+        Returns the thread (so the caller can join it), or ``None`` when there is
+        no token to watch.
+        """
+        if cancel_token is None:
+            return None
+
+        def _watch() -> None:
+            while process.poll() is None:
+                if cancel_token.cancelled:
+                    project_logger.warning(
+                        "Cancellation requested - terminating Vivado process group"
+                    )
+                    terminate_process_group(process, project_logger)
+                    return
+                cancel_token.wait(0.2)
+
+        watcher = threading.Thread(target=_watch, daemon=True)
+        watcher.start()
+        return watcher
+
     def execute(
         self,
         resolved_config: ResolvedProjectConfig,
         operation_paths: ResolvedOperationPaths,
         tcl_mode: str,
         step_patterns: list[StepPattern],
-        status_display=None,
+        status_display: Optional[ProgressSink] = None,
         cores: int = 1,
         extra_commands: Optional[list[str]] = None,
         build_steps: Optional[list[str]] = None,
+        cancel_token: Optional[CancellationToken] = None,
     ) -> ExecutionResult:
         """Execute Vivado for a project.
 
@@ -106,6 +139,8 @@ class ToolExecutorService:
             cores: Number of CPU cores to use
             extra_commands: Additional commands to run before Vivado (e.g., hdldepends)
             build_steps: Build steps to run (only for build mode)
+            cancel_token: Optional token; if cancelled, the Vivado process group
+                is terminated and the result is marked ``cancelled``.
 
         Returns:
             ExecutionResult with success status and errors
@@ -113,28 +148,21 @@ class ToolExecutorService:
         project_logger = get_project_logger(resolved_config.project_name)
 
         executor = resolved_config.executor
+        backend = get_tool_backend(resolved_config.tool)
 
-        # Generate TCL scripts from templates
-        tcl_generator = TclGenerator()
-        tcl_script = tcl_generator.generate(
+        # Generate the tool's scripts and the entry-point invocation.
+        entry_point = backend.generate_scripts(
             resolved_config=resolved_config,
             operation_paths=operation_paths,
             mode=tcl_mode,
             cores=cores,
             build_steps=build_steps,
         )
-
-        vivado_args = [
-            "-mode",
-            "batch",
-            "-notrace",
-            "-source",
-            str(tcl_script),
-        ]
+        tool_args = backend.batch_invocation(entry_point)
 
         # Build the complete command (handles heredoc vs && chaining)
         shell_args, stdin_content = executor.build_command(
-            executable_args=vivado_args,
+            executable_args=tool_args,
             extra_commands=extra_commands,
             repository_root=resolved_config.repository_root,
         )
@@ -171,6 +199,8 @@ class ToolExecutorService:
                 bufsize=1,
                 cwd=operation_paths.operation_dir,
                 env=os.environ.copy(),
+                # New session so Vivado + its children form a killable group.
+                start_new_session=True,
             )
 
             # If heredoc mode, write script to stdin
@@ -178,11 +208,36 @@ class ToolExecutorService:
                 process.stdin.write(stdin_content)
                 process.stdin.close()
 
+            # Watch for cancellation and tear down the process group if requested.
+            cancel_watcher = self._start_cancel_watcher(
+                process, cancel_token, project_logger
+            )
+
             # Process output - this handles streaming and logging
             success, error_lines = processor.process_output(process)
 
             # Wait for process to complete and get exit code
             process.wait()
+            if cancel_watcher:
+                cancel_watcher.join(timeout=1.0)
+
+            if cancel_token and cancel_token.cancelled:
+                project_logger.warning(f"{tcl_mode} cancelled by user")
+                if status_display:
+                    try:
+                        status_display.complete_project(
+                            resolved_config.project_name,
+                            success=False,
+                            message="Cancelled",
+                        )
+                    except Exception:
+                        pass
+                return ExecutionResult(
+                    success=False,
+                    error_lines=["Cancelled by user"],
+                    exit_code=process.returncode,
+                    cancelled=True,
+                )
 
             # Check if process failed but processor didn't detect it
             if process.returncode != 0 and success:
@@ -282,15 +337,16 @@ class ToolExecutorService:
         """
         try:
             executor = resolved_config.executor
+            backend = get_tool_backend(resolved_config.tool)
 
-            vivado_args = ["-mode", "gui", "-notrace", str(project_path)]
+            tool_args = backend.gui_invocation(project_path)
 
             shell_args, stdin_content = executor.build_command(
-                executable_args=vivado_args,
+                executable_args=tool_args,
                 repository_root=resolved_config.repository_root,
             )
 
-            logger.info(f"Opening Vivado GUI: {' '.join(shell_args)}")
+            logger.info(f"Opening GUI: {' '.join(shell_args)}")
             popen_args = self._prepare_popen_args(shell_args, stdin_content)
 
             process = subprocess.Popen(
@@ -313,75 +369,3 @@ class ToolExecutorService:
         except Exception as e:
             logger.error(f"Failed to open GUI: {e}")
             return False
-
-    def execute_batch_command(
-        self,
-        resolved_config: ResolvedProjectConfig,
-        tcl_commands: list[str],
-        working_dir: Path,
-    ) -> ExecutionResult:
-        """Execute arbitrary TCL commands in batch mode.
-
-        Args:
-            resolved_config: Fully resolved project configuration
-            tcl_commands: List of TCL commands to execute
-            working_dir: Working directory for execution
-
-        Returns:
-            ExecutionResult with success status
-        """
-        executor = resolved_config.executor
-        tcl_string = "; ".join(tcl_commands)
-
-        vivado_args = [
-            "-mode",
-            "batch",
-            "-notrace",
-            "-nojournal",
-            "-nolog",
-            "-tclargs",
-            tcl_string,
-        ]
-
-        shell_args, stdin_content = executor.build_command(
-            executable_args=vivado_args,
-            repository_root=resolved_config.repository_root,
-        )
-
-        try:
-            popen_args = self._prepare_popen_args(shell_args, stdin_content)
-
-            process = subprocess.Popen(
-                popen_args,
-                stdin=subprocess.PIPE if stdin_content else None,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=working_dir,
-                env=os.environ.copy(),
-            )
-
-            if stdin_content:
-                stdout, stderr = process.communicate(input=stdin_content)
-            else:
-                stdout, stderr = process.communicate()
-
-            return ExecutionResult(
-                success=process.returncode == 0,
-                error_lines=stderr.splitlines() if stderr else [],
-                exit_code=process.returncode,
-            )
-
-        except FileNotFoundError as e:
-            return ExecutionResult(
-                success=False,
-                error_lines=[f"Command not found: {e.filename}"],
-                exit_code=127,
-            )
-
-        except Exception as e:
-            return ExecutionResult(
-                success=False,
-                error_lines=[str(e)],
-                exit_code=-1,
-            )

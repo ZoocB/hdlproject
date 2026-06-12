@@ -1,25 +1,25 @@
 # core/application.py
 """Application container with internal initialisation"""
 
-import subprocess
 import shutil
+import subprocess
 from pathlib import Path
-from typing import Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from hdlproject.handlers.base.handler import BaseHandler
 
 from hdlproject.config.loader import ConfigLoader
-from hdlproject.runtime.context import RuntimeEnvironment
 from hdlproject.constants import GLOBAL_CONFIG_FILENAME, PROJECT_CONFIG_FILENAME
-from hdlproject.utils.logging_manager import (
-    setup_application_log,
-    set_verbosity,
-    LogLevel,
-    get_logger,
-    cleanup,
-)
 from hdlproject.handlers.registry import load_all_handlers
+from hdlproject.runtime.context import RuntimeEnvironment
+from hdlproject.utils.logging_manager import (
+    LogLevel,
+    cleanup,
+    get_logger,
+    set_verbosity,
+    setup_application_log,
+)
 
 logger = get_logger(__name__)
 

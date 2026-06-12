@@ -16,10 +16,11 @@ import shutil
 from pathlib import Path
 from typing import Union
 
-from jinja2 import Environment, FileSystemLoader, PackageLoader, Template
+from jinja2 import Environment, FileSystemLoader, PackageLoader
+from jinja2.sandbox import SandboxedEnvironment
 
 from hdlproject.core.build_variable_resolver import BuildVariableResolver
-from hdlproject.models.resolved import ResolvedProjectConfig, ResolvedOperationPaths
+from hdlproject.models.resolved import ResolvedOperationPaths, ResolvedProjectConfig
 from hdlproject.utils.logging_manager import get_logger
 
 logger = get_logger(__name__)
@@ -52,12 +53,18 @@ class TclGenerator:
     """
 
     def __init__(self):
+        # Trusted: our own bundled TCL orchestration templates.
         self.env = Environment(
             loader=PackageLoader("hdlproject", "tcl/vivado/templates"),
             keep_trailing_newline=True,
             lstrip_blocks=True,
             trim_blocks=True,
         )
+        # Untrusted: user-authored template strings (artefact_name) and template
+        # files (generated_sources). Sandboxed to block attribute-traversal
+        # injection (e.g. ``{{ ''.__class__... }}``) while still allowing normal
+        # dotted access and filters over the resolved-config context.
+        self._user_env = SandboxedEnvironment(keep_trailing_newline=True)
         self._variable_resolver = BuildVariableResolver()
 
     def generate(
@@ -159,7 +166,7 @@ class TclGenerator:
         template_context = config.model_dump(mode="json", exclude_none=True)
         template_context["build_variables"] = resolved_variables
 
-        template = Template(template_str)
+        template = self._user_env.from_string(template_str)
         rendered = template.render(**template_context).strip()
 
         logger.info(f"Resolved artefact name: {rendered}")
@@ -208,9 +215,10 @@ class TclGenerator:
                     f"  Specified in build_configuration.generated_sources"
                 )
 
-            # Create a Jinja2 environment rooted at the template's directory
+            # Sandboxed Jinja2 environment rooted at the template's directory
+            # (user-authored template file).
             template_dir = template_path.parent
-            source_env = Environment(
+            source_env = SandboxedEnvironment(
                 loader=FileSystemLoader(str(template_dir)),
                 keep_trailing_newline=True,
             )

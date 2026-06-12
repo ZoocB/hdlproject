@@ -1,0 +1,11 @@
+project_dir: prj
+hdldepends_config: hdldepends.json
+default_cores: 2
+max_parallel_builds: 2
+
+tools:
+  vivado:
+    "2024.1":
+      executable: vivado
+      setup:
+        - "source /tools/Xilinx/Vivado/2024.1/settings64.sh"

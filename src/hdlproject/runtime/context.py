@@ -7,11 +7,12 @@ carrier. This module provides execution context wrappers.
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
-    from hdlproject.models.models import GlobalConfiguration
-    from hdlproject.models.resolved import ResolvedProjectConfig, ResolvedOperationPaths
+    from hdlproject.core.cancellation import CancellationToken
+    from hdlproject.models import GlobalConfiguration
+    from hdlproject.models.resolved import ResolvedOperationPaths, ResolvedProjectConfig
 
 
 # =============================================================================
@@ -52,6 +53,7 @@ class ExecutionServices:
     tool_executor: Any  # ToolExecutorService
     status_manager: Any  # StatusManager
     compile_order_service: Any  # CompileOrderService (can be None)
+    cancel_token: Optional["CancellationToken"] = None
 
 
 @dataclass

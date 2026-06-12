@@ -8,11 +8,11 @@ strings for Docker-based setups.
 import os
 import subprocess
 from pathlib import Path
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from hdlproject.core.compile_order import CompileOrderManager
-    from hdlproject.models.resolved import ResolvedProjectConfig, ResolvedOperationPaths
+    from hdlproject.models.resolved import ResolvedOperationPaths, ResolvedProjectConfig
 
 from hdlproject.utils.logging_manager import get_logger, get_project_logger
 

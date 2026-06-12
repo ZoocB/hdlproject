@@ -2,9 +2,9 @@
 """Vivado output parsing with step result handling"""
 
 import re
-from typing import Optional, NamedTuple
-from enum import Enum, auto
 from dataclasses import dataclass
+from enum import Enum, auto
+from typing import NamedTuple, Optional
 
 from hdlproject.utils.logging_manager import get_logger
 

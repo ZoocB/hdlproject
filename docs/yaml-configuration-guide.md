@@ -38,171 +38,39 @@ inherits:
 - [Configuration Files](#configuration-files)
 - [Inheritance](#inheritance)
 - [Configuration Reference](#configuration-reference)
-  - [BlockDesign](#blockdesign)
-  - [WriteHwPlatformOptions](#writehwplatformoptions)
-  - [BuildVariable](#buildvariable)
-  - [GeneratedSource](#generatedsource)
-  - [BuildConfiguration](#buildconfiguration)
-  - [Constraint](#constraint)
-  - [DeviceInfo](#deviceinfo)
+  - [VivadoVersion](#vivadoversion)
   - [ShellConfig](#shellconfig)
   - [ToolExecutor](#toolexecutor)
   - [GlobalConfiguration](#globalconfiguration)
-  - [HooksConfig](#hooksconfig)
+  - [DeviceInfo](#deviceinfo)
   - [ProjectInformation](#projectinformation)
+  - [Constraint](#constraint)
+  - [BlockDesign](#blockdesign)
+  - [BuildVariable](#buildvariable)
+  - [GeneratedSource](#generatedsource)
+  - [WriteHwPlatformOptions](#writehwplatformoptions)
+  - [BuildConfiguration](#buildconfiguration)
+  - [HooksConfig](#hooksconfig)
   - [ProjectConfiguration](#projectconfiguration)
-  - [VivadoVersion](#vivadoversion)
 - [Complete Examples](#complete-examples)
 
 ## Configuration Reference
 
-### BlockDesign
+### VivadoVersion
 
-Block design configuration.
+Vivado version specification.
 
 Example:
 ```yaml
-block_designs:
-  - file: processing_system.bd
-    commands:
-      - "regenerate_bd_layout"
-      - "validate_bd_design"
+vivado_version:
+  year: "2020"
+  minor: "1"
 ```
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `file` | str | Yes | `—` | Path to block design file (.tcl or .bd), relative to config file. |
-| `commands` | list[str] | No | `null` | Additional TCL commands to execute after loading. |
-
-### WriteHwPlatformOptions
-
-Options for write_hw_platform Vivado command.
-
-Example:
-```yaml
-build_configuration:
-  write_hw_platform:
-    include_bit: true
-```
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `include_bit` | bool | No | `False` | Include bitstream in hardware platform file (.xsa). |
-
-### BuildVariable
-
-A build-time variable resolved before synthesis.
-
-Use `value` for static data or `command` for dynamically computed data.
-Exactly one of `value` or `command` must be set.
-
-Example:
-```yaml
-build_variables:
-  version_major:
-    value: 1
-  git_hash:
-    command: "git rev-parse --short HEAD"
-  build_date:
-    command: "date +%y%m%d"
-```
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `value` | str | int | float | No | `null` | Static value for this variable. |
-| `command` | str | No | `null` | Shell command to execute. stdout is captured and stripped as the value. |
-
-### GeneratedSource
-
-A Jinja2 template that is rendered at build time and added to the project.
-
-The template has access to the full resolved project configuration
-and resolved build variables. Reference values explicitly:
-- ``{{ build_variables.version_major }}``
-- ``{{ project_information.project_name }}``
-- ``{{ project_information.device_info.board_name }}``
-
-Example:
-```yaml
-generated_sources:
-  - template: "hdl/build_info_pkg.vhd.j2"
-```
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `template` | str | Yes | `—` | Path to Jinja2 template file, relative to the YAML config file. |
-
-### BuildConfiguration
-
-Build-time configuration for synthesis and implementation.
-
-These are persistent options stored in the config, distinct from
-CLI runtime options like --cores or --clean.
-
-Example:
-```yaml
-build_configuration:
-  artefact_name: "{{ project_information.project_name | upper }}_v{{ build_variables.version_major }}"
-  build_variables:
-    version_major:
-      value: 1
-    version_minor:
-      value: 0
-    git_hash:
-      command: "git rev-parse --short HEAD"
-  generated_sources:
-    - template: "hdl/build_info_pkg.vhd.j2"
-  write_hw_platform:
-    include_bit: true
-```
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `artefact_name` | str | No | `null` | Jinja2 template string for the build artefact name. Rendered with the full resolved config and build variables as context.  |
-| `build_variables` | dict[str, [BuildVariable](#buildvariable)] | No | `{}` | Build-time variables resolved before synthesis. Keys are variable names. |
-| `generated_sources` | list[[GeneratedSource](#generatedsource)] | No | `[]` | Jinja2 templates rendered at build time and added as project sources. |
-| `write_hw_platform` | [WriteHwPlatformOptions](#writehwplatformoptions) | No | `WriteHwPlatformOptions(include_bit=False)` | Options for hardware platform file (.xsa) generation. |
-
-### Constraint
-
-Constraint file configuration.
-
-Example:
-```yaml
-constraints:
-  - file: timing.xdc
-  - file: pins.xdc
-    fileset: constrs_1
-  - file: debug.xdc
-    execution: immediate
-    properties:
-      USED_IN_SYNTHESIS: false
-```
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `file` | str | Yes | `—` | Path to constraint file (.xdc), relative to config file. |
-| `fileset` | str | No | `null` | Target fileset (e.g., constrs_1). Defaults to main constraint fileset. |
-| `execution` | str | No | `null` | Options: `immediate` - Executes the script immediate upon processing it and doesnt add it to the project. |
-| `properties` | list[dict[str, str]] | dict[str, str] | No | `null` | Additional Vivado properties for the constraint file. |
-
-### DeviceInfo
-
-FPGA device and board configuration.
-
-Example:
-```yaml
-device_info:
-  part_name: xc7z020clg400-1
-  board_name: Arty_Z7_20
-  board_part: digilentinc.com:arty-z7-20:part0:1.1
-```
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `part_name` | str | Yes | `—` | Xilinx FPGA part number (e.g., xc7a35tcpg236-1). |
-| `board_name` | str | Yes | `—` | Human-readable board name for identification. |
-| `board_part` | str | No | `null` | Xilinx board part identifier (e.g., digilentinc.com:arty-a7-35:part0:1.1). |
+| `year` | str | Yes | `—` | Vivado version year (e.g., '2020', '2023'). |
+| `minor` | str | Yes | `—` | Vivado version minor release (e.g., '1', '2'). |
 
 ### ShellConfig
 
@@ -308,6 +176,178 @@ tools:
 | `max_parallel_builds` | int | No | `null` | Maximum parallel builds. If None, calculated from system resources. |
 | `compile_order_format` | str | No | `'json'` | Output format for compile order files ('json' or 'tcl'). |
 
+### DeviceInfo
+
+FPGA device and board configuration.
+
+Example:
+```yaml
+device_info:
+  part_name: xc7z020clg400-1
+  board_name: Arty_Z7_20
+  board_part: digilentinc.com:arty-z7-20:part0:1.1
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `part_name` | str | Yes | `—` | Xilinx FPGA part number (e.g., xc7a35tcpg236-1). |
+| `board_name` | str | Yes | `—` | Human-readable board name for identification. |
+| `board_part` | str | No | `null` | Xilinx board part identifier (e.g., digilentinc.com:arty-a7-35:part0:1.1). |
+
+### ProjectInformation
+
+Core project identification and settings.
+
+Example:
+```yaml
+project_information:
+  project_name: my_project
+  top_level_file_name: top_level
+  tool: vivado
+  tool_version: "2020.1"
+  device_info:
+    part_name: xc7z020clg400-1
+    board_name: Arty_Z7_20
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `project_name` | str | Yes | `—` | Tool project name. Used for project file and output naming. |
+| `top_level_file_name` | str | Yes | `—` | Top-level HDL module filename (without path or extension). |
+| `device_info` | [DeviceInfo](#deviceinfo) | Yes | `—` | FPGA device and board configuration. |
+| `tool` | str | No | `'vivado'` | EDA tool to use for this project (e.g., 'vivado'). |
+| `tool_version` | str | Yes | `—` | Tool version string (e.g., '2020.1'). |
+
+### Constraint
+
+Constraint file configuration.
+
+Example:
+```yaml
+constraints:
+  - file: timing.xdc
+  - file: pins.xdc
+    fileset: constrs_1
+  - file: debug.xdc
+    execution: immediate
+    properties:
+      USED_IN_SYNTHESIS: false
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `file` | str | Yes | `—` | Path to constraint file (.xdc), relative to config file. |
+| `fileset` | str | No | `null` | Target fileset (e.g., constrs_1). Defaults to main constraint fileset. |
+| `execution` | str | No | `null` | Options: `immediate` - Executes the script immediate upon processing it and doesnt add it to the project. |
+| `properties` | list[dict[str, str]] | dict[str, str] | No | `null` | Additional Vivado properties for the constraint file. |
+
+### BlockDesign
+
+Block design configuration.
+
+Example:
+```yaml
+block_designs:
+  - file: processing_system.bd
+    commands:
+      - "regenerate_bd_layout"
+      - "validate_bd_design"
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `file` | str | Yes | `—` | Path to block design file (.tcl or .bd), relative to config file. |
+| `commands` | list[str] | No | `null` | Additional TCL commands to execute after loading. |
+
+### BuildVariable
+
+A build-time variable resolved before synthesis.
+
+Use `value` for static data or `command` for dynamically computed data.
+Exactly one of `value` or `command` must be set.
+
+Example:
+```yaml
+build_variables:
+  version_major:
+    value: 1
+  git_hash:
+    command: "git rev-parse --short HEAD"
+  build_date:
+    command: "date +%y%m%d"
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `value` | str | int | float | No | `null` | Static value for this variable. |
+| `command` | str | No | `null` | Shell command to execute. stdout is captured and stripped as the value. |
+
+### GeneratedSource
+
+A Jinja2 template that is rendered at build time and added to the project.
+
+The template has access to the full resolved project configuration
+and resolved build variables. Reference values explicitly:
+- ``{{ build_variables.version_major }}``
+- ``{{ project_information.project_name }}``
+- ``{{ project_information.device_info.board_name }}``
+
+Example:
+```yaml
+generated_sources:
+  - template: "hdl/build_info_pkg.vhd.j2"
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `template` | str | Yes | `—` | Path to Jinja2 template file, relative to the YAML config file. |
+
+### WriteHwPlatformOptions
+
+Options for write_hw_platform Vivado command.
+
+Example:
+```yaml
+build_configuration:
+  write_hw_platform:
+    include_bit: true
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `include_bit` | bool | No | `False` | Include bitstream in hardware platform file (.xsa). |
+
+### BuildConfiguration
+
+Build-time configuration for synthesis and implementation.
+
+These are persistent options stored in the config, distinct from
+CLI runtime options like --cores or --clean.
+
+Example:
+```yaml
+build_configuration:
+  artefact_name: "{{ project_information.project_name | upper }}_v{{ build_variables.version_major }}"
+  build_variables:
+    version_major:
+      value: 1
+    version_minor:
+      value: 0
+    git_hash:
+      command: "git rev-parse --short HEAD"
+  generated_sources:
+    - template: "hdl/build_info_pkg.vhd.j2"
+  write_hw_platform:
+    include_bit: true
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `artefact_name` | str | No | `null` | Jinja2 template string for the build artefact name. Rendered with the full resolved config and build variables as context.  |
+| `build_variables` | dict[str, [BuildVariable](#buildvariable)] | No | `{}` | Build-time variables resolved before synthesis. Keys are variable names. |
+| `generated_sources` | list[[GeneratedSource](#generatedsource)] | No | `[]` | Jinja2 templates rendered at build time and added as project sources. |
+| `write_hw_platform` | [WriteHwPlatformOptions](#writehwplatformoptions) | No | `WriteHwPlatformOptions(include_bit=False)` | Options for hardware platform file (.xsa) generation. |
+
 ### HooksConfig
 
 TCL hook points for injecting custom commands at lifecycle stages.
@@ -340,30 +380,6 @@ hooks:
 | `pre_implementation` | list[str] | No | `[]` | Run immediately before implementation launch. |
 | `post_implementation` | list[str] | No | `[]` | Run after implementation completes successfully. |
 | `post_bitstream` | list[str] | No | `[]` | Run after bitstream generation and artefact packaging. |
-
-### ProjectInformation
-
-Core project identification and settings.
-
-Example:
-```yaml
-project_information:
-  project_name: my_project
-  top_level_file_name: top_level
-  tool: vivado
-  tool_version: "2020.1"
-  device_info:
-    part_name: xc7z020clg400-1
-    board_name: Arty_Z7_20
-```
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `project_name` | str | Yes | `—` | Tool project name. Used for project file and output naming. |
-| `top_level_file_name` | str | Yes | `—` | Top-level HDL module filename (without path or extension). |
-| `device_info` | [DeviceInfo](#deviceinfo) | Yes | `—` | FPGA device and board configuration. |
-| `tool` | str | No | `'vivado'` | EDA tool to use for this project (e.g., 'vivado'). |
-| `tool_version` | str | Yes | `—` | Tool version string (e.g., '2020.1'). |
 
 ### ProjectConfiguration
 
@@ -403,22 +419,6 @@ set_property -name STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY -value rebuilt -obj
 | `hooks` | [HooksConfig](#hooksconfig) | No | `HooksConfig(post_project_create=[], post_project_setup=[], pre_build=[], pre_synthesis=[], post_synthesis=[], pre_implementation=[], post_implementation=[], post_bitstream=[])` | TCL hook points for injecting custom commands at workflow lifecycle stages. |
 | `environment_setup` | dict[str, str] | No | `null` | Pre-processing scripts. Keys: executor, Values: script path. Output KEY=VALUE lines added to env. |
 | `hdlproject_config_version` | str | No | `'4.0.0'` | Configuration schema version. |
-
-### VivadoVersion
-
-Vivado version specification.
-
-Example:
-```yaml
-vivado_version:
-  year: "2020"
-  minor: "1"
-```
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `year` | str | Yes | `—` | Vivado version year (e.g., '2020', '2023'). |
-| `minor` | str | Yes | `—` | Vivado version minor release (e.g., '1', '2'). |
 
 ## Complete Examples
 

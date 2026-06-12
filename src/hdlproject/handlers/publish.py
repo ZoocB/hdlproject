@@ -3,21 +3,22 @@
 This handler manages git operations to trigger CI/CD builds.
 """
 
-import subprocess
-import yaml
-import uuid
 import hashlib
+import subprocess
+import uuid
 from dataclasses import dataclass
+
+import yaml
 
 from hdlproject.handlers.base.handler import BaseHandler
 from hdlproject.handlers.base.operation_config import OperationConfig
 from hdlproject.handlers.registry import HandlerInfo, register_handler
 from hdlproject.handlers.services.status_manager import StatusManager
 from hdlproject.runtime.context import (
-    RuntimeEnvironment,
     ExecutionContext,
-    SingleProjectExecution,
     ExecutionServices,
+    RuntimeEnvironment,
+    SingleProjectExecution,
 )
 from hdlproject.utils.logging_manager import get_logger
 

@@ -1,0 +1,23 @@
+inherits:
+  - ../configs/arty_z7_device.yaml
+  - ../configs/common_build.yaml
+
+project_information:
+  project_name: adder_project_2
+  top_level_file_name: adder_top
+
+build_configuration:
+  build_variables:
+    version_major:
+      value: 2
+    version_minor:
+      value: 1
+
+constraints:
+  - file: ../../files/constraints/timing.xdc
+    properties:
+      USED_IN_SYNTHESIS: "false"
+
+impl_options:
+  STEPS.OPT_DESIGN.ARGS.DIRECTIVE: Explore
+  STEPS.PLACE_DESIGN.ARGS.DIRECTIVE: ExtraNetDelay_high

@@ -4,31 +4,59 @@ This module provides the base class for all operation handlers (build, export, e
 """
 
 import shutil
-import psutil
-from typing import Any, Optional
+import signal
+import threading
 from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
+from typing import Any, Optional
 
+import psutil
+
+from hdlproject.config.loader import ConfigLoader
+from hdlproject.core.cancellation import CancellationToken
+from hdlproject.handlers.base.operation_config import OperationConfig
+from hdlproject.handlers.services.compile_order_service import CompileOrderService
+from hdlproject.handlers.services.project_loader import ProjectLoaderService
+from hdlproject.handlers.services.status_manager import StatusManager
+from hdlproject.handlers.services.tool_executor import ToolExecutorService
+from hdlproject.models.resolved import ResolvedProjectConfig
 from hdlproject.runtime.context import (
-    RuntimeEnvironment,
-    ExecutionServices,
     ExecutionContext,
+    ExecutionServices,
+    RuntimeEnvironment,
     SingleProjectExecution,
 )
-from hdlproject.models.resolved import ResolvedProjectConfig
-from hdlproject.handlers.base.operation_config import OperationConfig
-from hdlproject.handlers.services.project_loader import ProjectLoaderService
-from hdlproject.handlers.services.tool_executor import ToolExecutorService
-from hdlproject.handlers.services.status_manager import StatusManager
-from hdlproject.handlers.services.compile_order_service import CompileOrderService
-from hdlproject.config.loader import ConfigLoader
 from hdlproject.utils.logging_manager import (
     get_logger,
     setup_project_log,
 )
 
 logger = get_logger(__name__)
+
+
+@contextmanager
+def sigint_cancels(cancel_token: CancellationToken):
+    """Make Ctrl+C request cooperative cancellation instead of raising.
+
+    Only installs a handler when running on the main thread (signal handlers
+    cannot be set elsewhere). In a worker thread — e.g. the Textual UI's build
+    worker — this is a no-op and the front-end trips the token directly. The
+    previous handler is always restored on exit.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+
+    def _handler(signum, frame):
+        logger.warning("Interrupt received - cancelling (press Ctrl+C again to abort)")
+        cancel_token.cancel()
+
+    previous = signal.signal(signal.SIGINT, _handler)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGINT, previous)
 
 
 @contextmanager
@@ -88,10 +116,17 @@ class BaseHandler(ABC):
         # Status manager created per execution
         self.status_manager: Optional[StatusManager] = None
 
+        # Cancellation token, shared with the executor. A front-end (e.g. the
+        # Textual UI) may replace this before calling execute() so its cancel
+        # binding can trip the same token.
+        self.cancel_token = CancellationToken()
+
     def execute(self, projects: list[str], options: Any) -> None:
         """Main orchestration - loads projects and calls lifecycle hooks.
 
-        Supports parallel execution for handlers that enable it.
+        Supports parallel execution for handlers that enable it. Ctrl+C during a
+        run trips ``self.cancel_token`` (see ``sigint_cancels``), which the
+        executor watches to terminate Vivado.
 
         Args:
             projects: List of project names to process
@@ -124,13 +159,16 @@ class BaseHandler(ABC):
             log_file = operation_paths.get_log_file(self.CONFIG.name)
             self.status_manager.set_project_log_file(config.project_name, log_file)
 
-        # Use context manager for lifecycle management
-        with execution_lifecycle(self.status_manager):
+        # Use context managers for lifecycle + cancellation handling
+        with sigint_cancels(self.cancel_token), execution_lifecycle(
+            self.status_manager
+        ):
             # 4. Create execution services
             services = ExecutionServices(
                 tool_executor=self.tool_executor_service,
                 status_manager=self.status_manager,
                 compile_order_service=None,  # Created per-project
+                cancel_token=self.cancel_token,
             )
 
             # 5. Create execution context
@@ -149,94 +187,56 @@ class BaseHandler(ABC):
             if hasattr(options, "clean") and options.clean:
                 self._clean_operation_directories(context)
 
-            # 8. Determine if we should run in parallel
-            supports_parallel = self._get_supports_parallel()
-            should_parallelise = supports_parallel and len(resolved_configs) > 1
-
-            if should_parallelise:
-                max_workers = self._calculate_max_workers(context)
-                logger.info(
-                    f"Running {len(resolved_configs)} projects in parallel "
-                    f"(max {max_workers} concurrent)"
-                )
-                results = self._execute_parallel(context, max_workers)
-            else:
-                if not supports_parallel and len(resolved_configs) > 1:
-                    logger.info(
-                        f"Running {len(resolved_configs)} projects sequentially "
-                        "(parallel not supported)"
-                    )
-                results = self._execute_sequential(context)
+            # 8. Run the projects (one thread pool, sized 1..N), then summarise.
+            max_workers = self._resolve_worker_count(context)
+            logger.info(
+                f"Running {len(resolved_configs)} project(s) with up to "
+                f"{max_workers} concurrent"
+            )
+            results = self._run_projects(context, max_workers)
 
             # 9. Print summary
             self._print_operation_summary(context, results)
 
-    def _execute_sequential(self, context: ExecutionContext) -> dict[str, bool]:
-        """Execute projects sequentially."""
-        results = {}
+    def _resolve_worker_count(self, context: ExecutionContext) -> int:
+        """How many projects may run at once.
 
-        for config in context.resolved_configs:
-            single_ctx = self._create_single_execution(context, config)
+        One unless the handler opts into parallelism *and* there is more than one
+        project, in which case it is bounded by CPU/config limits.
+        """
+        if not self.CONFIG.supports_parallel or len(context.resolved_configs) <= 1:
+            return 1
+        return self._calculate_max_workers(context)
 
-            try:
-                self.prepare(single_ctx)
-                success = self.execute_single(single_ctx)
-                results[config.project_name] = success
-
-                if not success:
-                    error_msg = f"Operation failed for {config.project_name}"
-                    if not self.interactive:
-                        raise RuntimeError(error_msg)
-                    else:
-                        logger.error(error_msg)
-
-            except Exception as e:
-                results[config.project_name] = False
-                logger.error(
-                    f"Project {config.project_name} failed: {e}",
-                    exc_info=True,
-                )
-                if not self.interactive:
-                    raise
-
-        return results
-
-    def _execute_parallel(
-        self,
-        context: ExecutionContext,
-        max_workers: int,
+    def _run_projects(
+        self, context: ExecutionContext, max_workers: int
     ) -> dict[str, bool]:
-        """Execute projects in parallel using ThreadPoolExecutor."""
-        results = {}
+        """Execute every project through one thread pool (1 worker == sequential).
+
+        All projects run regardless of individual failures; in non-interactive
+        mode a RuntimeError is raised at the end if any failed, so the batch exit
+        code is non-zero while still reporting every result.
+        """
+        results: dict[str, bool] = {}
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_project = {}
-
-            for config in context.resolved_configs:
-                future = executor.submit(
-                    self._execute_single_project,
-                    context,
-                    config,
-                )
-                future_to_project[future] = config.project_name
-
+            future_to_project = {
+                executor.submit(self._execute_single_project, context, config):
+                    config.project_name
+                for config in context.resolved_configs
+            }
             for future in as_completed(future_to_project):
                 project_name = future_to_project[future]
-
                 try:
-                    success = future.result()
-                    results[project_name] = success
-
-                    if not success:
-                        logger.error(f"Operation failed for {project_name}")
-
+                    results[project_name] = future.result()
                 except Exception as e:
                     results[project_name] = False
                     logger.error(f"Project {project_name} failed: {e}", exc_info=True)
+                if not results[project_name]:
+                    logger.error(f"Operation failed for {project_name}")
 
-        # Raise if any failures in non-interactive mode
-        if not self.interactive and any(not s for s in results.values()):
-            failed = [n for n, s in results.items() if not s]
+        if not self.interactive and any(not ok for ok in results.values()):
+            failed = [n for n, ok in results.items() if not ok]
             raise RuntimeError(
                 f"Operation failed for {len(failed)} project(s): {', '.join(failed)}"
             )
@@ -248,7 +248,13 @@ class BaseHandler(ABC):
         context: ExecutionContext,
         config: ResolvedProjectConfig,
     ) -> bool:
-        """Execute a single project (used by parallel executor)."""
+        """Prepare and execute one project (the unit of work for the pool)."""
+        # A queued worker that hasn't started yet should not launch Vivado once
+        # cancellation has been requested.
+        if self.cancel_token.cancelled:
+            logger.warning(f"Cancelled - skipping {config.project_name}")
+            return False
+
         single_ctx = self._create_single_execution(context, config)
 
         try:
@@ -283,6 +289,7 @@ class BaseHandler(ABC):
             tool_executor=context.services.tool_executor,
             status_manager=context.services.status_manager,
             compile_order_service=compile_order_service,
+            cancel_token=context.services.cancel_token,
         )
 
         return SingleProjectExecution(
@@ -334,10 +341,6 @@ class BaseHandler(ABC):
         else:
             default_max = self.environment.global_config.max_parallel_builds or 4
             return min(default_max, len(context.resolved_configs))
-
-    def _get_supports_parallel(self) -> bool:
-        """Check if this handler supports parallel execution."""
-        return self.CONFIG.supports_parallel
 
     def _clean_operation_directories(self, context: ExecutionContext) -> None:
         """Clean operation directories for all projects."""

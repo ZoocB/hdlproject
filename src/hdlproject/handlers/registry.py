@@ -3,8 +3,8 @@
 This module provides a registry for handlers and their metadata.
 """
 
-from typing import Any, Type, Optional
 from dataclasses import dataclass, field
+from typing import Any, Optional, Type
 
 from hdlproject.utils.logging_manager import get_logger
 
@@ -164,11 +164,12 @@ def get_menu_handlers(
 
 
 def load_all_handlers():
-    """Load all handler modules to trigger registration."""
-    # Import all handler modules
-    from hdlproject.handlers import build
-    from hdlproject.handlers import open_project
-    from hdlproject.handlers import export
-    from hdlproject.handlers import publish
+    """Load all handler modules to trigger registration (import side effects)."""
+    from hdlproject.handlers import (
+        build,  # noqa: F401
+        export,  # noqa: F401
+        open_project,  # noqa: F401
+        publish,  # noqa: F401
+    )
 
     logger.debug(f"Loaded {len(_registry.get_all())} handlers")

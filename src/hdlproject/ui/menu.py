@@ -1,14 +1,15 @@
 # ui/menu.py
-"""Interactive menu system with simplified error handling"""
+"""Interactive keyboard-driven menu (project selection + operation prompts)."""
 from typing import Any
-from pathlib import Path
+
 from InquirerPy import inquirer
 from InquirerPy.base.control import Choice
 from InquirerPy.separator import Separator
+
 from hdlproject.core.application import Application
-from hdlproject.utils.logging_manager import get_logger
-from hdlproject.ui.style import StyleManager
 from hdlproject.ui.prompts import PromptFactory
+from hdlproject.ui.style import StyleManager
+from hdlproject.utils.logging_manager import get_logger
 
 logger = get_logger(__name__)
 
@@ -133,8 +134,7 @@ class ProjectManagementMenu:
         return choices
 
     def _execute_handler(self, handler_name: str) -> None:
-        """Execute the selected handler"""
-        error_occurred = False
+        """Execute the selected handler, surfacing any failure to the user."""
         error_message = None
         try:
             handler_info = self.app.get_handler_info(handler_name)
@@ -146,29 +146,15 @@ class ProjectManagementMenu:
                 interactive=True,
             )
         except RuntimeError as e:
-            error_occurred = True
             error_message = str(e)
         except Exception as e:
-            error_occurred = True
             error_message = f"Unexpected error: {e}"
         finally:
+            if error_message:
+                # Surface the failure instead of silently returning to the menu.
+                logger.error(error_message)
+                print(f"\n{self.RED}{self.BOLD}✗ {error_message}{self.RESET}")
             input("\nPress Enter to continue...")
-
-    def _get_project_log_path(self, project_name: str, handler_name: str) -> Path:
-        """Get the expected path for a project log file."""
-        # Search any .hdlproject-{tool} directory for the log
-        project_dir = self.app.project_dir / project_name
-        for d in project_dir.glob(".hdlproject-*"):
-            log_path = d / handler_name / "logs" / f"{handler_name}.log"
-            if log_path.exists():
-                return log_path
-        # Fallback to vivado (default tool)
-        return (
-            project_dir
-            / f".hdlproject-vivado/{handler_name}"
-            / "logs"
-            / f"{handler_name}.log"
-        )
 
     def _collect_handler_options(self, handler_info) -> dict[str, Any]:
         """Collect options for handler through prompts"""

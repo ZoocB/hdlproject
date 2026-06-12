@@ -1,0 +1,20 @@
+inherits:
+  - ../configs/arty_z7_device.yaml
+  - ../configs/common_build.yaml
+
+project_information:
+  project_name: adder_project_1
+  top_level_file_name: adder_top
+
+build_configuration:
+  build_variables:
+    version_major:
+      value: 1
+    version_minor:
+      value: 0
+    git_hash:
+      command: "git rev-parse --short HEAD"
+
+hooks:
+  post_project_setup:
+    - 'common::log_info "Project 1 setup complete"'

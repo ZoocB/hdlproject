@@ -10,10 +10,10 @@ from typing import Optional
 from hdlproject.handlers.base.handler import BaseHandler
 from hdlproject.handlers.base.operation_config import OperationConfig
 from hdlproject.handlers.registry import HandlerInfo, register_handler
-from hdlproject.runtime.context import ExecutionContext, SingleProjectExecution
 from hdlproject.models.resolved import ResolvedProjectConfig
-from hdlproject.utils.vivado_output_parser import StepPattern
+from hdlproject.runtime.context import ExecutionContext, SingleProjectExecution
 from hdlproject.utils.logging_manager import get_project_logger
+from hdlproject.utils.vivado_output_parser import StepPattern
 
 
 @dataclass
@@ -122,6 +122,7 @@ class OpenProjectHandler(BaseHandler):
             step_patterns=self.CONFIG.step_patterns,
             status_display=context.services.status_manager.display,
             extra_commands=extra_commands,
+            cancel_token=context.services.cancel_token,
         )
         return result.success
 
