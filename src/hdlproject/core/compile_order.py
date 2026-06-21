@@ -97,9 +97,8 @@ class CompileOrderManager:
             "hdldepends",
             "--top-file",
             top_level_file,
-            "--compile-order-json",
+            "-o compile-order-json",
             str(output_file),
-            "--no-pickle",
             "-vv",
         ]
 
