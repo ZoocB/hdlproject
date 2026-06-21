@@ -55,8 +55,8 @@ class PublishHandler(BaseHandler):
         interactive: bool = False,
     ):
         super().__init__(environment, interactive)
-        self.jenkins_dir = self.environment.repository_root / ".jenkins"
-        self.token_file = self.jenkins_dir / "build-token.yaml"
+        self.token_dir = self.environment.repository_root / ".hdlproject"
+        self.token_file = self.token_dir / "build-token.yaml"
         self.project_configs = {}
 
     def configure(self, context: ExecutionContext) -> None:
@@ -106,8 +106,8 @@ class PublishHandler(BaseHandler):
                 check_executor=False,
             )
 
-            # Setup jenkins directory
-            self.jenkins_dir.mkdir(exist_ok=True)
+            # Setup token directory
+            self.token_dir.mkdir(exist_ok=True)
 
             # Create services
             services = ExecutionServices(
