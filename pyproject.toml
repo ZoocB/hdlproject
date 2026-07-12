@@ -4,11 +4,21 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hdlproject"
-version = "0.2.0"
+dynamic = ["version"]
 description = "A modular system for managing Vivado FPGA projects"
 readme = "README.md"
 requires-python = ">=3.12"
 license = {text = "MIT"}
+keywords = ["fpga", "vivado", "hdl", "eda", "build-automation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Build Tools",
+]
 
 dependencies = [
     "InquirerPy>=0.3.4",
@@ -34,6 +44,9 @@ dev = [
 [project.scripts]
 hdlproject = "hdlproject.main:main"
 
+[project.urls]
+Homepage = "https://github.com/ZoocB/hdlproject"
+
 [tool.setuptools]
 package-dir = {"" = "src"}
 
@@ -43,10 +56,14 @@ include = ["hdlproject*"]
 
 [tool.setuptools.package-data]
 hdlproject = [
+    "py.typed",
     "tcl/*.tcl",
     "tcl/vivado/static/*.tcl",
     "tcl/vivado/templates/*.j2",
 ]
+
+[tool.setuptools.dynamic]
+version = {attr = "hdlproject.__version__"}
 
 [tool.ruff]
 line-length = 88

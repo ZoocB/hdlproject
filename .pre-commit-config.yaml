@@ -1,0 +1,17 @@
+# Pre-commit hooks configuration
+# Install: pip install pre-commit && pre-commit install
+#
+# This file goes in your repository root (next to pyproject.toml)
+# Filename must be: .pre-commit-config.yaml
+
+repos:
+  # Local hooks
+  - repo: local
+    hooks:
+      - id: generate-yaml-docs
+        name: Generate YAML Configuration Documentation
+        entry: python scripts/pre_commit_docs.py
+        language: python
+        files: ^src/hdlproject/models/.*\.py$
+        additional_dependencies: ['pydantic>=2.0']
+        pass_filenames: false
