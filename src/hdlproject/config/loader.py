@@ -9,8 +9,8 @@ from typing import Optional
 
 import yaml
 
-from hdlproject.config.config_resolver import YAMLConfigLoader
-from hdlproject.config.resolver import ConfigResolver
+from hdlproject.config.project_resolver import ProjectConfigResolver
+from hdlproject.config.yaml_loader import YAMLConfigLoader
 from hdlproject.constants import GLOBAL_CONFIG_FILENAME, PROJECT_CONFIG_FILENAME
 from hdlproject.models import GlobalConfiguration, ProjectConfiguration
 from hdlproject.models.resolved import ResolvedProjectConfig
@@ -182,8 +182,8 @@ class ConfigLoader:
         projects_base_dir = self.repository_root / global_config.project_dir
         project_dir = projects_base_dir / project_name
 
-        # Use ConfigResolver to merge and resolve everything
-        resolver = ConfigResolver()
+        # Use ProjectConfigResolver to merge and resolve everything
+        resolver = ProjectConfigResolver()
         resolved = resolver.resolve(
             global_config=global_config,
             project_config=project_config,

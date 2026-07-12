@@ -25,7 +25,7 @@ from hdlproject.utils.logging_manager import get_logger
 logger = get_logger(__name__)
 
 
-class ConfigResolver:
+class ProjectConfigResolver:
     """Resolves global + project configuration into a flat ResolvedProjectConfig.
 
     Merge rules:

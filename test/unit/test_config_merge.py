@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from hdlproject.config.config_resolver import YAMLConfigLoader
 from hdlproject.config.loader import ConfigLoader
+from hdlproject.config.yaml_loader import YAMLConfigLoader
 
 TEST_ROOT = Path(__file__).parent.parent
 

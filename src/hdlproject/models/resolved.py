@@ -82,7 +82,7 @@ class ResolvedOperationPaths(BaseModel):
 class ResolvedProjectConfig(BaseModel):
     """Fully resolved, flat configuration for a single project.
 
-    Created by ConfigResolver from GlobalConfiguration + ProjectConfiguration.
+    Created by ProjectConfigResolver from GlobalConfiguration + ProjectConfiguration.
     All paths are absolute, all merging is done, all derived values pre-computed.
     This replaces ProjectRuntime as the single object passed through the system.
 
