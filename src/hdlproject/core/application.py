@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 from hdlproject.config.loader import ConfigLoader
 from hdlproject.constants import GLOBAL_CONFIG_FILENAME, PROJECT_CONFIG_FILENAME
 from hdlproject.handlers.registry import load_all_handlers
+from hdlproject.models import GlobalConfiguration
 from hdlproject.runtime.context import RuntimeEnvironment
 from hdlproject.utils.logging_manager import (
     LogLevel,
@@ -39,6 +40,7 @@ class Application:
         compile_order_format: str,
         verbosity: LogLevel,
         vivado_location: Optional[Path] = None,
+        global_config: Optional[GlobalConfiguration] = None,
     ):
         """
         Initialise application with resolved configuration.
@@ -49,6 +51,8 @@ class Application:
             compile_order_format: Compile order output format
             verbosity: Logging verbosity level
             vivado_location: Optional Vivado installation path (for validation)
+            global_config: Pre-loaded global configuration. Loaded from
+                git_root if not provided.
         """
         # Set verbosity first
         set_verbosity(verbosity)
@@ -66,6 +70,7 @@ class Application:
         self.runtime_environment = self._create_runtime_environment(
             git_root=git_root,
             vivado_location=vivado_location,
+            global_config=global_config,
         )
 
         # Load all handlers
@@ -80,6 +85,7 @@ class Application:
         self,
         git_root: Path,
         vivado_location: Optional[Path] = None,
+        global_config: Optional[GlobalConfiguration] = None,
     ) -> RuntimeEnvironment:
         """
         Create the RuntimeEnvironment for handlers.
@@ -87,13 +93,14 @@ class Application:
         Args:
             git_root: Git repository root
             vivado_location: Optional Vivado installation path
+            global_config: Pre-loaded global configuration. Loaded from
+                git_root if not provided.
 
         Returns:
             RuntimeEnvironment with global config loaded
         """
-        # Load global configuration
-        config_loader = ConfigLoader(git_root)
-        global_config = config_loader.load_global_config()
+        if global_config is None:
+            global_config = ConfigLoader(git_root).load_global_config()
 
         return RuntimeEnvironment(
             repository_root=git_root,
@@ -123,22 +130,24 @@ class Application:
         git_root = cls._discover_git_root()
         logger.debug(f"Git root: {git_root}")
 
-        # Step 3: Resolve project directory (CLI -> Config)
-        project_dir = cls._resolve_project_dir(args, git_root)
+        # Step 3: Load global configuration once and share it
+        repo_config = ConfigLoader(git_root).load_global_config()
+
+        # Step 4: Resolve project directory (CLI -> Config)
+        project_dir = cls._resolve_project_dir(args, git_root, repo_config)
         logger.info(f"Using project directory: {project_dir}")
 
-        # Step 4: Resolve compile order format (CLI -> Config -> Default)
-        repo_config = ConfigLoader(git_root).load_global_config()
+        # Step 5: Resolve compile order format (CLI -> Config -> Default)
         compile_format = (
             getattr(args, "compile_order_format", None)
             or repo_config.compile_order_format
             or "json"
         )
 
-        # Step 5: Map verbosity from args
+        # Step 6: Map verbosity from args
         verbosity = cls._map_verbosity(args)
 
-        # Step 6: Get Vivado location if specified
+        # Step 7: Get Vivado location if specified
         vivado_location = getattr(args, "vivado_location", None)
         if vivado_location:
             vivado_location = Path(vivado_location)
@@ -150,6 +159,7 @@ class Application:
             compile_order_format=compile_format,
             verbosity=verbosity,
             vivado_location=vivado_location,
+            global_config=repo_config,
         )
 
     @staticmethod
@@ -186,21 +196,6 @@ class Application:
             RuntimeError: If not in a git repository
         """
         try:
-            # Add current directory as safe
-            subprocess.run(
-                [
-                    "git",
-                    "config",
-                    "--global",
-                    "--add",
-                    "safe.directory",
-                    str(Path.cwd()),
-                ],
-                check=False,
-                capture_output=True,
-            )
-
-            # Get git root
             result = subprocess.run(
                 ["git", "rev-parse", "--show-toplevel"],
                 capture_output=True,
@@ -209,13 +204,21 @@ class Application:
             )
             return Path(result.stdout.strip())
 
-        except subprocess.CalledProcessError:
+        except subprocess.CalledProcessError as e:
+            if e.stderr and "dubious ownership" in e.stderr:
+                raise RuntimeError(
+                    "Git reports this repository has dubious ownership. Run:\n"
+                    f"  git config --global --add safe.directory {Path.cwd()}"
+                ) from e
             raise RuntimeError(
-                "Not in a git repository. hdlproject must be run from within a git repository."
-            )
+                "Not in a git repository. hdlproject must be run from within "
+                "a git repository."
+            ) from e
 
     @staticmethod
-    def _resolve_project_dir(args, git_root: Path) -> Path:
+    def _resolve_project_dir(
+        args, git_root: Path, repo_config: GlobalConfiguration
+    ) -> Path:
         """
         Resolve project directory: CLI argument -> Config file.
         No default fallback - must be explicitly specified.
@@ -223,6 +226,7 @@ class Application:
         Args:
             args: Parsed CLI arguments
             git_root: Git repository root
+            repo_config: Already-loaded global configuration
 
         Returns:
             Resolved project directory path
@@ -230,9 +234,6 @@ class Application:
         Raises:
             RuntimeError: If project_dir cannot be resolved
         """
-        # Load repository config
-        repo_config = ConfigLoader(git_root).load_global_config()
-
         # Priority 1: CLI argument
         if hasattr(args, "project_dir") and args.project_dir:
             prj_dir = Path(args.project_dir)

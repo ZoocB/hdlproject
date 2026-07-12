@@ -3,6 +3,7 @@
 This module provides a registry for handlers and their metadata.
 """
 
+import inspect
 from dataclasses import dataclass, field
 from typing import Any, Optional, Type
 
@@ -48,11 +49,17 @@ class HandlerInfo:
         Returns:
             Options instance
         """
-        import inspect
-
         sig = inspect.signature(self.options_class)
         valid_params = set(sig.parameters.keys())
         filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_params}
+
+        dropped = set(kwargs) - valid_params
+        if dropped:
+            logger.debug(
+                f"Ignoring options not supported by "
+                f"{self.options_class.__name__}: {sorted(dropped)}"
+            )
+
         return self.options_class(**filtered_kwargs)
 
 

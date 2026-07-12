@@ -2,6 +2,7 @@
 """Entry point for hdlproject"""
 
 import sys
+from typing import Optional
 
 from hdlproject.cli.parser import create_parser
 from hdlproject.core.application import Application
@@ -16,6 +17,7 @@ def main() -> int:
     parser = create_parser()
     args = parser.parse_args()
 
+    app: Optional[Application] = None
     try:
         # Create application - it handles all initialisation internally
         app = Application.from_args(args)
@@ -36,7 +38,7 @@ def main() -> int:
         logger.error(f"Fatal error: {e}", exc_info=True)
         return 1
     finally:
-        if "app" in locals():
+        if app is not None:
             app.shutdown()
 
 

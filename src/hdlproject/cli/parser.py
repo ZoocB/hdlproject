@@ -2,6 +2,7 @@
 """Command line interface parser"""
 
 import argparse
+import sys
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -23,14 +24,15 @@ def create_parser() -> argparse.ArgumentParser:
         '--project-dir',
         type=str,
         default=None,
-        help='Project directory (overrides hdlproject-config.json)'
+        help='Project directory (overrides hdlproject_global_config.yaml)'
     )
 
     parser.add_argument(
         '--compile-order-format',
         choices=['txt', 'csv', 'json'],
-        default="json",
-        help='Compile order output format (overrides config, default: json)'
+        default=None,
+        help='Compile order output format (default: json, or value from '
+             'global config)'
     )
 
     # Verbosity options (mutually exclusive)
@@ -78,9 +80,9 @@ def create_parser() -> argparse.ArgumentParser:
                 arg_name = arg_def_copy.pop("name")
                 cmd_parser.add_argument(arg_name, **arg_def_copy)
 
-    except Exception:
+    except Exception as e:
         # Allow parser to work even if handlers fail to load
         # This enables --help to work during development
-        pass
+        print(f"warning: failed to load command handlers: {e}", file=sys.stderr)
 
     return parser

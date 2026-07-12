@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 
+from hdlproject.config.config_resolver import YAMLConfigLoader
 from hdlproject.config.loader import ConfigLoader
 
 TEST_ROOT = Path(__file__).parent.parent
@@ -77,3 +78,38 @@ def test_two_projects_resolve_independently(loader):
     assert p2.impl_options["STEPS.OPT_DESIGN.ARGS.DIRECTIVE"] == "Explore"
     # project_2 still inherits the shared device info
     assert p2.project_information.device_info.part_name == "xc7z020clg400-1"
+
+
+def test_diamond_inheritance_list_merged_once(tmp_path):
+    """A shared base reached via two branches contributes its list once."""
+    (tmp_path / "base.yaml").write_text("constraints:\n  - a.xdc\n  - b.xdc\n")
+    (tmp_path / "b.yaml").write_text("inherits: base.yaml\n")
+    (tmp_path / "c.yaml").write_text("inherits: base.yaml\n")
+    child = tmp_path / "child.yaml"
+    child.write_text("inherits:\n  - b.yaml\n  - c.yaml\n")
+
+    result = YAMLConfigLoader().load_with_inheritance(child)
+
+    assert result["constraints"] == ["a.xdc", "b.xdc"]
+
+
+def test_diamond_inheritance_scalar_no_duplicate_error(tmp_path):
+    """A shared base's scalar must not trigger a spurious duplicate error."""
+    (tmp_path / "base.yaml").write_text('tool_version: "2023.2"\n')
+    (tmp_path / "b.yaml").write_text("inherits: base.yaml\n")
+    (tmp_path / "c.yaml").write_text("inherits: base.yaml\n")
+    child = tmp_path / "child.yaml"
+    child.write_text("inherits:\n  - b.yaml\n  - c.yaml\n")
+
+    result = YAMLConfigLoader().load_with_inheritance(child)
+
+    assert result["tool_version"] == "2023.2"
+
+
+def test_genuine_circular_inheritance_raises(tmp_path):
+    """A true cycle (a -> b -> a) is still detected and rejected."""
+    (tmp_path / "a.yaml").write_text("inherits: b.yaml\n")
+    (tmp_path / "b.yaml").write_text("inherits: a.yaml\n")
+
+    with pytest.raises(RuntimeError, match="Circular dependency"):
+        YAMLConfigLoader().load_with_inheritance(tmp_path / "a.yaml")

@@ -82,7 +82,7 @@ class ConfigLoader:
             return self._global_config
 
         except yaml.YAMLError as e:
-            raise ValueError(f"Invalid YAML in {config_path}: {e}")
+            raise ValueError(f"Invalid YAML in {config_path}: {e}") from e
         except Exception as e:
             logger.error(f"Failed to load global configuration: {e}")
             raise
@@ -238,4 +238,6 @@ class ConfigLoader:
 
             except subprocess.CalledProcessError as e:
                 logger.error(f"Setup script failed: {e.stderr}")
-                raise RuntimeError(f"Environment setup failed: {script_path}")
+                raise RuntimeError(
+                    f"Environment setup failed: {script_path}"
+                ) from e

@@ -6,7 +6,7 @@ Pydantic validation is done by the ConfigLoader after inheritance is resolved.
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Set
+from typing import Any
 
 import yaml
 
@@ -36,18 +36,23 @@ class YAMLConfigLoader:
             FileNotFoundError: If config file or parent doesn't exist
             RuntimeError: If circular dependency detected
         """
-        return self._load_recursive(config_path, set())
+        return self._load_recursive(config_path, set(), set())
 
     def _load_recursive(
         self,
         config_path: Path,
-        visited: Set[str],
+        visited: set[str],
+        merged: set[str],
     ) -> dict[str, Any]:
         """Recursively load configuration with inheritance.
 
         Args:
             config_path: Path to configuration file
-            visited: Set of already-visited paths (for cycle detection)
+            visited: Paths visited along the current inheritance path, used
+                to detect genuine cycles.
+            merged: Paths already merged into the result anywhere in this
+                call's traversal, so a shared ancestor reached via multiple
+                branches (diamond inheritance) is only merged once.
 
         Returns:
             Merged configuration dict
@@ -68,11 +73,13 @@ class YAMLConfigLoader:
         try:
             with open(config_path) as f:
                 data = yaml.safe_load(f) or {}
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        except FileNotFoundError as e:
+            raise FileNotFoundError(
+                f"Configuration file not found: {config_path}"
+            ) from e
         except yaml.YAMLError as e:
             logger.error(f"Failed to parse YAML file {config_path}: {e}")
-            raise ValueError(f"Invalid YAML in {config_path}: {e}")
+            raise ValueError(f"Invalid YAML in {config_path}: {e}") from e
 
         # Process inheritance
         if "inherits" in data:
@@ -91,7 +98,15 @@ class YAMLConfigLoader:
                         f"Parent configuration not found: {parent_path}\n"
                         f"  Referenced from: {config_path}"
                     )
-                parent_data = self._load_recursive(parent_path, visited.copy())
+                parent_abs = str(parent_path.absolute())
+                if parent_abs in merged:
+                    # Already merged via another branch of this inheritance
+                    # tree (diamond inheritance): first occurrence wins.
+                    continue
+                parent_data = self._load_recursive(
+                    parent_path, visited.copy(), merged
+                )
+                merged.add(parent_abs)
                 result = self._merge_configs(result, parent_data)
 
             # Merge current file on top
