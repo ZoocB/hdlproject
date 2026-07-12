@@ -198,7 +198,7 @@ class ToolExecutorService:
                 text=True,
                 bufsize=1,
                 cwd=operation_paths.operation_dir,
-                env=os.environ.copy(),
+                env={**os.environ, **resolved_config.environment},
                 # New session so Vivado + its children form a killable group.
                 start_new_session=True,
             )
@@ -353,7 +353,7 @@ class ToolExecutorService:
                 popen_args,
                 stdin=subprocess.PIPE if stdin_content else None,
                 cwd=project_path.parent,
-                env=os.environ.copy(),
+                env={**os.environ, **resolved_config.environment},
             )
 
             if stdin_content:

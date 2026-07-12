@@ -47,6 +47,7 @@ class ProjectConfigResolver:
         project_name: str,
         project_dir: Path,
         repository_root: Path,
+        environment: Optional[dict[str, str]] = None,
     ) -> ResolvedProjectConfig:
         """Create a fully resolved configuration for a project.
 
@@ -56,6 +57,8 @@ class ProjectConfigResolver:
             project_name: Directory name of the project
             project_dir: Absolute path to the project directory
             repository_root: Absolute path to the repository root
+            environment: Environment variables captured from the project's
+                environment_setup scripts (empty if none configured)
 
         Returns:
             ResolvedProjectConfig with everything pre-computed
@@ -113,6 +116,7 @@ class ProjectConfigResolver:
             build_configuration=project_config.build_configuration,
             hooks=project_config.hooks,
             environment_setup=project_config.environment_setup,
+            environment=environment or {},
             # Merged settings
             executor=tool_executor,
             compile_order_format=global_config.compile_order_format,

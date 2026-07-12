@@ -194,7 +194,7 @@ class CompileOrderService:
 
         Note: Only called from generate() which already verified is_available().
         """
-        env = os.environ.copy()
+        env = {**os.environ, **self.resolved_config.environment}
 
         executor = self.resolved_config.executor
         env_command = executor.get_environment_command()

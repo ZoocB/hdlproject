@@ -73,8 +73,11 @@ class ConfigLoader:
 
             logger.info(f"Loaded global configuration from {config_path}")
 
-            # Validate with Pydantic
-            self._global_config = GlobalConfiguration(**data)
+            # Validate with Pydantic (no environment_setup for global config,
+            # so no captured env to add to the ${VAR} expansion context)
+            self._global_config = GlobalConfiguration.model_validate(
+                data, context={"env": {}}
+            )
             logger.debug(
                 f"Global config: project_dir={self._global_config.project_dir}"
             )
@@ -100,6 +103,29 @@ class ConfigLoader:
             FileNotFoundError: If project or config file doesn't exist
             ValueError: If configuration is invalid
         """
+        config, _captured_env = self._load_project_config_with_env(project_name)
+        return config
+
+    def _load_project_config_with_env(
+        self, project_name: str
+    ) -> tuple[ProjectConfiguration, dict[str, str]]:
+        """Load a project's configuration and its captured setup environment.
+
+        Same as ``load_project_config`` but also returns the KEY=VALUE pairs
+        captured from the project's ``environment_setup`` scripts (empty dict
+        if none configured), for callers that need to thread them onward
+        (e.g. into ``ResolvedProjectConfig``) without touching ``os.environ``.
+
+        Args:
+            project_name: Name of the project directory
+
+        Returns:
+            Tuple of (ProjectConfiguration model, captured environment dict)
+
+        Raises:
+            FileNotFoundError: If project or config file doesn't exist
+            ValueError: If configuration is invalid
+        """
         global_config = self.load_global_config()
         projects_base_dir = self.repository_root / global_config.project_dir
         project_dir = projects_base_dir / project_name
@@ -119,17 +145,22 @@ class ConfigLoader:
             # Load with inheritance processing
             resolved_dict = self.yaml_loader.load_with_inheritance(config_path)
 
-            # Execute environment setup if specified
+            # Execute environment setup if specified, capturing its output
+            # so ${VAR} expansion below can see it without touching os.environ
+            captured_env: dict[str, str] = {}
             if "environment_setup" in resolved_dict:
-                self._execute_environment_setup(
+                captured_env = self._run_environment_setup(
                     resolved_dict["environment_setup"], config_path.parent
                 )
 
-            # Validate with Pydantic
-            config = ProjectConfiguration(**resolved_dict)
+            # Validate with Pydantic, making the captured env available to
+            # ${VAR} expansion for this project's own config fields
+            config = ProjectConfiguration.model_validate(
+                resolved_dict, context={"env": captured_env}
+            )
             logger.info(f"Loaded project configuration: {project_name}")
 
-            return config
+            return config, captured_env
 
         except Exception as e:
             logger.error(f"Failed to load configuration for {project_name}: {e}")
@@ -176,7 +207,9 @@ class ConfigLoader:
             global_config = self.load_global_config()
 
         # Load project config
-        project_config = self.load_project_config(project_name)
+        project_config, captured_env = self._load_project_config_with_env(
+            project_name
+        )
 
         # Resolve paths
         projects_base_dir = self.repository_root / global_config.project_dir
@@ -190,26 +223,35 @@ class ConfigLoader:
             project_name=project_name,
             project_dir=project_dir,
             repository_root=self.repository_root,
+            environment=captured_env,
         )
 
         logger.debug(f"Resolved configuration for {project_name}")
         return resolved
 
-    def _execute_environment_setup(
+    def _run_environment_setup(
         self,
         setup_config: dict[str, str],
         base_dir: Path,
-    ) -> None:
-        """Execute environment setup scripts.
+    ) -> dict[str, str]:
+        """Run environment setup scripts and capture their output.
+
+        Does not mutate ``os.environ`` — callers thread the returned dict
+        through explicitly (env-var expansion context, subprocess env) so
+        that one project's setup cannot leak into another.
 
         Args:
             setup_config: Dict mapping executor to script path
             base_dir: Base directory for relative script paths
+
+        Returns:
+            Dict of KEY=VALUE pairs captured from script stdout
         """
-        import os
         import subprocess
 
         logger.info("Executing environment setup scripts...")
+
+        captured_env: dict[str, str] = {}
 
         for executor, script_path in setup_config.items():
             script_full_path = (base_dir / script_path).resolve()
@@ -233,11 +275,13 @@ class ConfigLoader:
                 for line in result.stdout.splitlines():
                     if "=" in line and not line.strip().startswith("#"):
                         key, value = line.split("=", 1)
-                        os.environ[key.strip()] = value.strip()
-                        logger.debug(f"Set environment: {key.strip()}")
+                        captured_env[key.strip()] = value.strip()
+                        logger.debug(f"Captured environment: {key.strip()}")
 
             except subprocess.CalledProcessError as e:
                 logger.error(f"Setup script failed: {e.stderr}")
                 raise RuntimeError(
                     f"Environment setup failed: {script_path}"
                 ) from e
+
+        return captured_env

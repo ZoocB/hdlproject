@@ -116,6 +116,13 @@ class ResolvedProjectConfig(BaseModel):
     build_configuration: BuildConfiguration = Field(default_factory=BuildConfiguration)
     hooks: HooksConfig = Field(default_factory=HooksConfig)
     environment_setup: Optional[dict[str, str]] = None
+    environment: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Environment variables captured from environment_setup scripts, "
+            "applied when launching tool processes."
+        ),
+    )
 
     # === Merged settings (global + project override) ===
     executor: ToolExecutor = Field(
