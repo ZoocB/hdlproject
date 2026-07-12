@@ -1,5 +1,13 @@
 # utils/logging_manager.py
-"""Unified logging management system"""
+"""Unified logging management system
+
+Library-safety invariant: importing this module (or anything that imports
+it) must never touch the root logger or attach any handlers. All package
+output is anchored on the "hdlproject" logger, which is only configured the
+first time a caller explicitly asks for CLI-style logging (via
+``set_verbosity``). Root is only ever touched by ``setup_application_log``,
+which is exclusively invoked by the CLI application itself.
+"""
 
 import logging
 import sys
@@ -8,6 +16,11 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Optional
+
+# Namespace logger for this module's own diagnostics - never the root logger.
+logger = logging.getLogger(__name__)
+
+PACKAGE_LOGGER_NAME = "hdlproject"
 
 
 class LogLevel(Enum):
@@ -37,43 +50,60 @@ class LoggingManager:
             self.log_level = LogLevel.NORMAL
             self.app_log_path: Optional[Path] = None
             self.project_logs: dict[str, logging.FileHandler] = {}
-            self._setup_root_logger()
+            self._console_handler: Optional[logging.StreamHandler] = None
+            self._app_file_handler: Optional[logging.FileHandler] = None
 
-    def _setup_root_logger(self):
-        """Setup root logger with console handler only initially"""
-        root = logging.getLogger()
-        root.setLevel(logging.DEBUG)
+    def _ensure_console_handler(self) -> None:
+        """Attach the console handler to the package logger, on first use.
 
-        # Remove any existing handlers
-        root.handlers.clear()
+        Anchored on "hdlproject" (not root) with propagate=False, so console
+        output never duplicates into a host application's root handlers.
+        """
+        if self._console_handler is not None:
+            return
 
-        # Console handler
+        package_logger = logging.getLogger(PACKAGE_LOGGER_NAME)
+        package_logger.setLevel(logging.DEBUG)
+        package_logger.propagate = False
+
         console = logging.StreamHandler(sys.stdout)
         console.setLevel(self._get_console_level())
         console.setFormatter(self._get_console_formatter())
-        root.addHandler(console)
+        package_logger.addHandler(console)
         self._console_handler = console
 
     def setup_application_log(self, log_dir: Path) -> Path:
-        """Setup main application log file"""
+        """Setup main application log file.
+
+        Only called when running as the CLI application (never at import).
+        Attaches to the ROOT logger, deliberately, so third-party library
+        logs are also captured - existing root handlers are left intact.
+        """
         log_dir.mkdir(parents=True, exist_ok=True)
         self.app_log_path = log_dir / "hdlproject.log"
 
-        # Add file handler to root logger
         root = logging.getLogger()
+        root.setLevel(logging.DEBUG)
+
         file_handler = logging.FileHandler(self.app_log_path, mode='w')
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         ))
         root.addHandler(file_handler)
+        # The package logger does not propagate to root, so the file handler
+        # must also be attached there for hdlproject's own logs to be
+        # captured alongside third-party output. Each record passes through
+        # exactly one of the two loggers, so nothing is written twice.
+        logging.getLogger(PACKAGE_LOGGER_NAME).addHandler(file_handler)
+        self._app_file_handler = file_handler
 
         # Log startup
-        logging.info("="*60)
-        logging.info("Project Manager Started")
-        logging.info(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        logging.info(f"Log: {self.app_log_path}")
-        logging.info("="*60)
+        logger.info("="*60)
+        logger.info("Project Manager Started")
+        logger.info(f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        logger.info(f"Log: {self.app_log_path}")
+        logger.info("="*60)
 
         return self.app_log_path
 
@@ -82,7 +112,7 @@ class LoggingManager:
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Create project logger
-        project_logger = logging.getLogger(f"project.{project_name}")
+        project_logger = logging.getLogger(f"hdlproject.project.{project_name}")
         project_logger.setLevel(logging.DEBUG)
         project_logger.propagate = False  # Don't propagate to root
 
@@ -112,11 +142,12 @@ class LoggingManager:
 
     def get_project_logger(self, project_name: str) -> logging.Logger:
         """Get logger for specific project"""
-        return logging.getLogger(f"project.{project_name}")
+        return logging.getLogger(f"hdlproject.project.{project_name}")
 
     def set_verbosity(self, level: LogLevel):
         """Update verbosity level"""
         self.log_level = level
+        self._ensure_console_handler()
         self._console_handler.setLevel(self._get_console_level())
         self._console_handler.setFormatter(self._get_console_formatter())
 
@@ -161,13 +192,27 @@ class LoggingManager:
         return self.log_level != LogLevel.SILENT
 
     def cleanup(self):
-        """Cleanup all handlers"""
+        """Cleanup all handlers this manager attached"""
         for handler in self.project_logs.values():
             handler.close()
         self.project_logs.clear()
 
+        if self._console_handler is not None:
+            logging.getLogger(PACKAGE_LOGGER_NAME).removeHandler(self._console_handler)
+            self._console_handler.close()
+            self._console_handler = None
 
-# Global instance
+        if self._app_file_handler is not None:
+            logging.getLogger().removeHandler(self._app_file_handler)
+            logging.getLogger(PACKAGE_LOGGER_NAME).removeHandler(
+                self._app_file_handler
+            )
+            self._app_file_handler.close()
+            self._app_file_handler = None
+
+
+# Global instance. Safe to build eagerly: __init__ only sets plain
+# attributes and never touches the root logger or attaches handlers.
 _manager = LoggingManager()
 
 # Convenience functions
