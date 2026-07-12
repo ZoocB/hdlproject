@@ -28,11 +28,16 @@ class Constraint(FlexibleModel):
     )
     fileset: Optional[str] = Field(
         default=None,
-        description="Target fileset (e.g., constrs_1). Defaults to main constraint fileset.",
+        description=(
+            "Target fileset (e.g., constrs_1). Defaults to main constraint fileset."
+        ),
     )
     execution: Optional[str] = Field(
         default=None,
-        description="Options: `immediate` - Executes the script immediate upon processing it and doesnt add it to the project.",
+        description=(
+            "Options: `immediate` - Executes the script immediate upon processing "
+            "it and doesnt add it to the project."
+        ),
     )
     properties: Optional[Union[list[dict[str, str]], dict[str, str]]] = Field(
         default=None,
@@ -93,7 +98,9 @@ class BuildVariable(FlexibleModel):
     )
     command: Optional[str] = Field(
         default=None,
-        description="Shell command to execute. stdout is captured and stripped as the value.",
+        description=(
+            "Shell command to execute. stdout is captured and stripped as the value."
+        ),
     )
 
 
@@ -144,7 +151,8 @@ class BuildConfiguration(FlexibleModel):
     Example:
     ```yaml
     build_configuration:
-      artefact_name: "{{ project_information.project_name | upper }}_v{{ build_variables.version_major }}"
+      artefact_name: "{{ project_information.project_name | upper }}_v{{ \
+build_variables.version_major }}"
       build_variables:
         version_major:
           value: 1
@@ -168,11 +176,15 @@ class BuildConfiguration(FlexibleModel):
     )
     build_variables: dict[str, BuildVariable] = Field(
         default_factory=dict,
-        description="Build-time variables resolved before synthesis. Keys are variable names.",
+        description=(
+            "Build-time variables resolved before synthesis. Keys are variable names."
+        ),
     )
     generated_sources: list[GeneratedSource] = Field(
         default_factory=list,
-        description="Jinja2 templates rendered at build time and added as project sources.",
+        description=(
+            "Jinja2 templates rendered at build time and added as project sources."
+        ),
     )
     write_hw_platform: WriteHwPlatformOptions = Field(
         default_factory=WriteHwPlatformOptions,
@@ -208,7 +220,10 @@ class HooksConfig(FlexibleModel):
     )
     post_project_setup: list[str] = Field(
         default_factory=list,
-        description="Run after all project components (sources, constraints, IPs, BDs) are loaded.",
+        description=(
+            "Run after all project components (sources, constraints, IPs, BDs) "
+            "are loaded."
+        ),
     )
     pre_build: list[str] = Field(
         default_factory=list,

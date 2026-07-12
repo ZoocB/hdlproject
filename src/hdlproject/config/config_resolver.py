@@ -153,9 +153,11 @@ class YAMLConfigLoader:
                 # Scalar or type mismatch: error
                 else:
                     raise ValueError(
-                        f"Duplicate definition of '{current_path}' found in inheritance chain. "
+                        f"Duplicate definition of '{current_path}' found in "
+                        f"inheritance chain. "
                         f"Parent value: {result[key]}, Child value: {value}. "
-                        f"Scalar values should only be defined once across inherited configurations."
+                        f"Scalar values should only be defined once across "
+                        f"inherited configurations."
                     )
             else:
                 # Key doesn't exist in base, just add it

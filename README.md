@@ -51,8 +51,15 @@ Create `hdlproject_global_config.yaml` at repository root:
 ```yaml
 project_dir: "projects"
 hdldepends_config: "hdldepends.json"
-compile_order_script_format: "json"
-default_cores_per_project: 2
+compile_order_format: "json"
+default_cores: 2
+
+tools:
+  vivado:
+    "2020.1":
+      setup:
+        - "source /tools/Xilinx/Vivado/2020.1/settings64.sh"
+      executable: "vivado"
 ```
 
 ### 2. Project Configuration
@@ -163,6 +170,7 @@ These directories are safe to delete and should be gitignored.
 
 ```bash
 pip install -e ".[dev]"   # editable install with dev tools
+pre-commit install        # regenerates docs/yaml-configuration-guide.md on model changes
 
 pytest                    # run the test suite
 ruff check src/           # lint

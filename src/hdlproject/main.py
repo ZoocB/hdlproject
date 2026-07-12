@@ -13,7 +13,8 @@ logger = get_logger(__name__)
 
 
 def main() -> int:
-    """Main entry point - routes to either interactive menu or batch command execution"""
+    """Main entry point - routes to either interactive menu or batch command
+    execution"""
     parser = create_parser()
     args = parser.parse_args()
 

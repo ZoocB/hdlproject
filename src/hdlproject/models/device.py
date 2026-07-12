@@ -25,7 +25,10 @@ class DeviceInfo(FlexibleModel):
     board_name: str = Field(description="Human-readable board name for identification.")
     board_part: Optional[str] = Field(
         default=None,
-        description="Xilinx board part identifier (e.g., digilentinc.com:arty-a7-35:part0:1.1).",
+        description=(
+            "Xilinx board part identifier (e.g., "
+            "digilentinc.com:arty-a7-35:part0:1.1)."
+        ),
     )
 
 
@@ -62,7 +65,10 @@ class ProjectInformation(FlexibleModel):
 
     @property
     def tool_version_year(self) -> str:
-        """Get the year/major component of the tool version (e.g., '2020' from '2020.1')."""
+        """Get the year/major component of the tool version.
+
+        E.g., '2020' from '2020.1'.
+        """
         return self.tool_version.split(".")[0]
 
     @property

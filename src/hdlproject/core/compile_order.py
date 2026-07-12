@@ -49,7 +49,8 @@ class CompileOrderManager:
         valid_extensions = [".json", ".toml", ".yaml"]
         if hdldepends_config_path.suffix not in valid_extensions:
             raise ValueError(
-                f"Invalid hdldepends config extension: {hdldepends_config_path.suffix}\n"
+                f"Invalid hdldepends config extension: "
+                f"{hdldepends_config_path.suffix}\n"
                 f"  Must be one of: {valid_extensions}"
             )
 

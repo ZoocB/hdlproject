@@ -37,7 +37,8 @@ class ProjectConfiguration(FlexibleModel):
 
     Each generates TCL like:
     ```tcl
-    set_property -name STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY -value rebuilt -objects [get_runs synth_1]
+    set_property -name STEPS.SYNTH_DESIGN.ARGS.FLATTEN_HIERARCHY -value rebuilt \
+-objects [get_runs synth_1]
     ```
     """
 
@@ -46,7 +47,9 @@ class ProjectConfiguration(FlexibleModel):
     )
     hdldepends_config: Optional[str] = Field(
         default=None,
-        description="Project-specific hdldepends config path. Overrides global setting.",
+        description=(
+            "Project-specific hdldepends config path. Overrides global setting."
+        ),
     )
     tools: Optional[dict[str, dict[str, ToolExecutor]]] = Field(
         default=None,
@@ -77,11 +80,17 @@ class ProjectConfiguration(FlexibleModel):
     )
     hooks: HooksConfig = Field(
         default_factory=HooksConfig,
-        description="TCL hook points for injecting custom commands at workflow lifecycle stages.",
+        description=(
+            "TCL hook points for injecting custom commands at workflow "
+            "lifecycle stages."
+        ),
     )
     environment_setup: Optional[dict[str, str]] = Field(
         default=None,
-        description="Pre-processing scripts. Keys: executor, Values: script path. Output KEY=VALUE lines added to env.",
+        description=(
+            "Pre-processing scripts. Keys: executor, Values: script path. "
+            "Output KEY=VALUE lines added to env."
+        ),
     )
     hdlproject_config_version: Optional[str] = Field(
         default="4.0.0",

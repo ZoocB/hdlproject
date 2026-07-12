@@ -124,7 +124,10 @@ class LoggingManager:
         for project_name in self.project_logs:
             project_logger = self.get_project_logger(project_name)
             for handler in project_logger.handlers:
-                if isinstance(handler, logging.StreamHandler) and handler != self.project_logs[project_name]:
+                if (
+                    isinstance(handler, logging.StreamHandler)
+                    and handler != self.project_logs[project_name]
+                ):
                     handler.setLevel(self._get_console_level())
                     handler.setFormatter(self._get_console_formatter())
 
@@ -141,7 +144,9 @@ class LoggingManager:
     def _get_console_formatter(self) -> logging.Formatter:
         """Get appropriate formatter based on verbosity"""
         if self.log_level == LogLevel.DEBUG:
-            return logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+            return logging.Formatter(
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            )
         elif self.log_level == LogLevel.VERBOSE:
             return logging.Formatter('[%(levelname)s] %(message)s')
         else:

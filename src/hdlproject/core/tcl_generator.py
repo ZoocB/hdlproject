@@ -200,7 +200,8 @@ class TclGenerator:
         gen_dir.mkdir(parents=True, exist_ok=True)
 
         # Build the template context — mirrors the YAML config structure
-        # so users reference values explicitly (e.g., {{ project_information.project_name }})
+        # so users reference values explicitly
+        # (e.g., {{ project_information.project_name }})
         template_context = config.model_dump(mode="json", exclude_none=True)
         template_context["build_variables"] = resolved_variables
 

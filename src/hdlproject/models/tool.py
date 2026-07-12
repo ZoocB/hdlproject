@@ -141,8 +141,10 @@ class ToolExecutor(FlexibleModel):
 
         Args:
             executable_args: Arguments to pass to the executable
-            extra_commands: Additional commands to run before executable (e.g., hdldepends)
-            repository_root: Repository root path (needed if shell.mount_repo_root is True)
+            extra_commands: Additional commands to run before executable
+                (e.g., hdldepends)
+            repository_root: Repository root path (needed if
+                shell.mount_repo_root is True)
 
         Returns:
             Tuple of (shell_args, stdin_content):

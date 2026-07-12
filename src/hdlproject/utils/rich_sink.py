@@ -269,18 +269,21 @@ class RichLiveSink:
                 for step in project.steps:
                     if step.state == StepState.FAILED:
                         console.print(
-                            f"  [red]✗ {step.name}[/red] [dim][{step.get_count_str()}][/dim]"
+                            f"  [red]✗ {step.name}[/red] "
+                            f"[dim][{step.get_count_str()}][/dim]"
                             if step.get_count_str()
                             else f"  [red]✗ {step.name}[/red]"
                         )
                     elif step.has_issues():
                         console.print(
-                            f"  [yellow]⚠ {step.name}[/yellow] [dim][{step.get_count_str()}][/dim]"
+                            f"  [yellow]⚠ {step.name}[/yellow] "
+                            f"[dim][{step.get_count_str()}][/dim]"
                         )
 
                 for info in project.extra_info.values():
                     console.print(
-                        f"  [dim]{info.label}[/dim] [{info.style}]{info.value}[/{info.style}]"
+                        f"  [dim]{info.label}[/dim] "
+                        f"[{info.style}]{info.value}[/{info.style}]"
                     )
                     if info.path:
                         print(f"  Report {info.path}")  # Plain print - no wrapping
@@ -378,7 +381,8 @@ class RichLiveSink:
                                 count_str = step.get_count_str()
                                 count_display = f" [{count_str}]" if count_str else ""
                                 project_branch.add(
-                                    f"[{step_color}]{step_symbol} {step.name}{duration}{count_display}[/{step_color}]"
+                                    f"[{step_color}]{step_symbol} {step.name}"
+                                    f"{duration}{count_display}[/{step_color}]"
                                 )
 
                         latest_msg = project.get_latest_message()
@@ -398,7 +402,8 @@ class RichLiveSink:
 
                         if project.log_file_path:
                             project_branch.add(
-                                f"[dim cyan]└─ Log: {project.log_file_path}[/dim cyan]"
+                                f"[dim cyan]└─ Log: "
+                                f"{project.log_file_path}[/dim cyan]"
                             )
                     else:
                         text = project_text
@@ -425,17 +430,20 @@ class RichLiveSink:
                                         f" [{count_str}]" if count_str else ""
                                     )
                                     project_branch.add(
-                                        f"[{step_color}]{step_symbol} {step.name}{count_display}[/{step_color}]"
+                                        f"[{step_color}]{step_symbol} "
+                                        f"{step.name}{count_display}[/{step_color}]"
                                     )
 
                             for info in project.extra_info.values():
                                 project_branch.add(
-                                    f"[dim]{info.label}[/dim] [{info.style}]{info.value}[/{info.style}]"
+                                    f"[dim]{info.label}[/dim] "
+                                    f"[{info.style}]{info.value}[/{info.style}]"
                                 )
 
                             if project.log_file_path:
                                 project_branch.add(
-                                    f"[dim cyan]└─ Log: {project.log_file_path}[/dim cyan]"
+                                    f"[dim cyan]└─ Log: "
+                                    f"{project.log_file_path}[/dim cyan]"
                                 )
                         else:
                             branch.add(text)

@@ -9,8 +9,10 @@ This document describes the structure and options for HDL project configuration 
 
 There are two types of configuration files:
 
-- **Global Configuration** (`hdlproject_global_config.yaml`): Located at repository root, defines repository-wide settings
-- **Project Configuration** (`hdlproject_project_config.yaml`): Located in each project directory, defines project-specific settings
+- **Global Configuration** (`hdlproject_global_config.yaml`): Located at
+  repository root, defines repository-wide settings
+- **Project Configuration** (`hdlproject_project_config.yaml`): Located in
+  each project directory, defines project-specific settings
 
 Project-level settings override global settings where noted.
 

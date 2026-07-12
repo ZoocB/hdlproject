@@ -169,7 +169,8 @@ class ConfigResolver:
             if not path.exists():
                 raise FileNotFoundError(
                     f"Global hdldepends config not found: {path}\n"
-                    f"  Specified in: {repository_root / 'hdlproject_global_config.yaml'}"
+                    f"  Specified in: "
+                    f"{repository_root / 'hdlproject_global_config.yaml'}"
                 )
             return path.resolve()
 

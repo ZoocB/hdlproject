@@ -38,11 +38,17 @@ class GlobalConfiguration(FlexibleModel):
     """
 
     project_dir: str = Field(
-        description="Base directory containing project directories, relative to repository root."
+        description=(
+            "Base directory containing project directories, relative to "
+            "repository root."
+        )
     )
     hdldepends_config: Optional[str] = Field(
         default=None,
-        description="Default hdldepends config path, relative to repository root. Overridable per-project.",
+        description=(
+            "Default hdldepends config path, relative to repository root. "
+            "Overridable per-project."
+        ),
     )
     tools: dict[str, dict[str, ToolExecutor]] = Field(
         default_factory=dict,
@@ -57,7 +63,9 @@ class GlobalConfiguration(FlexibleModel):
     )
     max_parallel_builds: Optional[int] = Field(
         default=None,
-        description="Maximum parallel builds. If None, calculated from system resources.",
+        description=(
+            "Maximum parallel builds. If None, calculated from system resources."
+        ),
     )
     compile_order_format: str = Field(
         default="json",
