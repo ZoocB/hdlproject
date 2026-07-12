@@ -205,6 +205,7 @@ class ToolExecutorService:
 
             # If heredoc mode, write script to stdin
             if stdin_content:
+                assert process.stdin is not None  # PIPE requested above
                 process.stdin.write(stdin_content)
                 process.stdin.close()
 
@@ -244,7 +245,9 @@ class ToolExecutorService:
                 success = False
                 if not error_lines:
                     try:
-                        stderr_output = process.stderr.read()
+                        stderr_output = (
+                            process.stderr.read() if process.stderr else None
+                        )
                         if stderr_output:
                             error_lines = stderr_output.strip().splitlines()
                     except Exception:
@@ -354,9 +357,11 @@ class ToolExecutorService:
                 stdin=subprocess.PIPE if stdin_content else None,
                 cwd=project_path.parent,
                 env={**os.environ, **resolved_config.environment},
+                text=True,
             )
 
             if stdin_content:
+                assert process.stdin is not None  # PIPE requested above
                 process.stdin.write(stdin_content)
                 process.stdin.close()
 

@@ -20,7 +20,7 @@ class CompileOrderManager:
     """
 
     def __init__(
-        self, output_format: str = "json", hdldepends_config_path: Path = None
+        self, output_format: str = "json", hdldepends_config_path: Optional[Path] = None
     ):
         """
         Initialise compile order manager.

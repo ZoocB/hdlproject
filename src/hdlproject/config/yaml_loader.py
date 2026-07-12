@@ -88,7 +88,7 @@ class YAMLConfigLoader:
                 inherits = [inherits]
 
             # Start with empty base
-            result = {}
+            result: dict[str, Any] = {}
 
             # Load each parent
             for parent_file in inherits:

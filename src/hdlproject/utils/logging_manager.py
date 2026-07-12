@@ -44,7 +44,7 @@ class LoggingManager:
                     cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self):
+    def __init__(self) -> None:
         if not hasattr(self, '_Initialised'):
             self._Initialised = True
             self.log_level = LogLevel.NORMAL
@@ -144,10 +144,11 @@ class LoggingManager:
         """Get logger for specific project"""
         return logging.getLogger(f"hdlproject.project.{project_name}")
 
-    def set_verbosity(self, level: LogLevel):
+    def set_verbosity(self, level: LogLevel) -> None:
         """Update verbosity level"""
         self.log_level = level
         self._ensure_console_handler()
+        assert self._console_handler is not None  # set by _ensure_console_handler
         self._console_handler.setLevel(self._get_console_level())
         self._console_handler.setFormatter(self._get_console_formatter())
 
@@ -191,7 +192,7 @@ class LoggingManager:
         """Check if status display should be shown"""
         return self.log_level != LogLevel.SILENT
 
-    def cleanup(self):
+    def cleanup(self) -> None:
         """Cleanup all handlers this manager attached"""
         for handler in self.project_logs.values():
             handler.close()
@@ -219,7 +220,7 @@ _manager = LoggingManager()
 def setup_application_log(log_dir: Path) -> Path:
     return _manager.setup_application_log(log_dir)
 
-def setup_project_log(project_name: str, log_path: Path):
+def setup_project_log(project_name: str, log_path: Path) -> None:
     _manager.setup_project_log(project_name, log_path)
 
 def get_logger(name: str) -> logging.Logger:
@@ -230,7 +231,7 @@ def get_project_logger(project_name: str) -> logging.Logger:
     """Get project-specific logger"""
     return _manager.get_project_logger(project_name)
 
-def set_verbosity(level: LogLevel):
+def set_verbosity(level: LogLevel) -> None:
     _manager.set_verbosity(level)
 
 def is_silent() -> bool:
@@ -239,5 +240,5 @@ def is_silent() -> bool:
 def should_show_status_display() -> bool:
     return _manager.should_show_status_display()
 
-def cleanup():
+def cleanup() -> None:
     _manager.cleanup()

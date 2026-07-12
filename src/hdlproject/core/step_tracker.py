@@ -165,6 +165,8 @@ class StepTracker:
             self._reset_step_counts()
 
             if self.sink:
+                # guarded by dispatch in _handle_parsed_message
+                assert parsed.step_name is not None
                 self.sink.update_project_step(
                     self.project_name, parsed.step_name, failed=False
                 )
@@ -174,6 +176,9 @@ class StepTracker:
             self._complete_step(parsed)
 
     def _complete_step(self, parsed: ParsedMessage) -> None:
+        # guarded by dispatch in _handle_parsed_message / caller's elif check
+        assert parsed.step_name is not None
+        assert parsed.step_result is not None
         vivado_warnings = self._current_step_warnings
         vivado_critical_warnings = self._current_step_critical_warnings
         vivado_errors = self._current_step_errors

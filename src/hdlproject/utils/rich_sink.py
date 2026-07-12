@@ -50,8 +50,8 @@ class RichLiveSink:
         self._running = False
 
         self.console = Console()
-        self.live = None
-        self._display_thread = None
+        self.live: Optional[Live] = None
+        self._display_thread: Optional[threading.Thread] = None
 
     # === ProgressSink: registration + mutations ===
 
@@ -307,7 +307,7 @@ class RichLiveSink:
             tree = Tree(f"[bold cyan]{self.title}[/bold cyan]")
 
             # Group projects by state - WARNING is treated as COMPLETED
-            groups = {
+            groups: dict[StepState, list[tuple[str, ProjectStatus]]] = {
                 StepState.RUNNING: [],
                 StepState.COMPLETED: [],
                 StepState.FAILED: [],

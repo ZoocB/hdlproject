@@ -66,7 +66,7 @@ class HandlerInfo:
 class HandlerRegistry:
     """Registry for managing handlers."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self._handlers: dict[str, HandlerInfo] = {}
 
     def register(self, info: HandlerInfo) -> None:

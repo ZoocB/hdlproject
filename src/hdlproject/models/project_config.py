@@ -127,7 +127,7 @@ class ProjectConfiguration(FlexibleModel):
             return global_executor
 
         # No fallback - must be explicitly configured
-        available = []
+        available: list[str] = []
         if self.tools and tool in self.tools:
             available.extend(f"{tool}/{v}" for v in self.tools[tool].keys())
         if tool in global_config.tools:

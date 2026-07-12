@@ -14,6 +14,7 @@ from hdlproject.handlers.base.handler import BaseHandler
 from hdlproject.handlers.base.operation_config import OperationConfig
 from hdlproject.handlers.registry import HandlerInfo, register_handler
 from hdlproject.handlers.services.status_manager import StatusManager
+from hdlproject.models.resolved import ResolvedProjectConfig
 from hdlproject.runtime.context import (
     ExecutionContext,
     ExecutionServices,
@@ -57,7 +58,7 @@ class PublishHandler(BaseHandler):
         super().__init__(environment, interactive)
         self.token_dir = self.environment.repository_root / ".hdlproject"
         self.token_file = self.token_dir / "build-token.yaml"
-        self.project_configs = {}
+        self.project_configs: dict[str, ResolvedProjectConfig] = {}
 
     def configure(self, context: ExecutionContext) -> None:
         """Display publish configuration."""
@@ -71,7 +72,7 @@ class PublishHandler(BaseHandler):
         print(f"Projects to publish: {len(context.resolved_configs)}")
 
         # Group by tool and version
-        version_groups = {}
+        version_groups: dict[str, list[str]] = {}
         for name, config in self.project_configs.items():
             label = f"{config.tool} {config.tool_version}"
             if label not in version_groups:

@@ -81,6 +81,5 @@ python_files = ["test_*.py"]
 python_version = "3.12"
 files = ["src/hdlproject"]
 ignore_missing_imports = true
-# Advisory only for now: do not fail the build on type errors.
-warn_unused_ignores = false
-check_untyped_defs = false
+warn_unused_ignores = true
+check_untyped_defs = true

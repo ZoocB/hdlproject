@@ -174,7 +174,7 @@ pre-commit install        # regenerates docs/yaml-configuration-guide.md on mode
 
 pytest                    # run the test suite
 ruff check src/           # lint
-mypy src/hdlproject       # type-check (advisory)
+mypy src/hdlproject       # type-check
 ```
 
 The configuration schema is frozen by a test (`test/unit/test_schema_freeze.py`):

@@ -4,6 +4,7 @@
 from typing import Any
 
 from InquirerPy import get_style
+from InquirerPy.utils import InquirerPyStyle
 
 from hdlproject.utils.logging_manager import get_logger
 
@@ -50,7 +51,7 @@ class StyleManager:
             "separator": "─"*30
         }
 
-    def get_inquirer_style(self) -> tuple[dict[str, str], dict[str, str]]:
+    def get_inquirer_style(self) -> InquirerPyStyle:
         """Get InquirerPy style configuration"""
         style_dict = {}
 

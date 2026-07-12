@@ -70,6 +70,7 @@ class CompileOrderService:
         if not self.is_available():
             logger.debug("Compile order service not available")
             return
+        assert self.resolved_config is not None  # guaranteed by is_available()
 
         project_logger = get_project_logger(self.resolved_config.project_name)
 
@@ -95,6 +96,7 @@ class CompileOrderService:
         """
         if not self.is_available() or not self.requires_shell_execution():
             return None
+        assert self.resolved_config is not None  # guaranteed by is_available()
 
         hdldepends_cmd = self.get_command(operation_paths)
         if hdldepends_cmd:
@@ -120,6 +122,8 @@ class CompileOrderService:
         """
         if not self.is_available():
             return None
+        assert self.manager is not None  # guaranteed by is_available()
+        assert self.resolved_config is not None  # guaranteed by is_available()
 
         output_file = (
             operation_paths.operation_dir
@@ -156,6 +160,8 @@ class CompileOrderService:
         if self.requires_shell_execution():
             logger.debug("Compile order requires shell execution - use get_command()")
             return None
+        assert self.manager is not None  # guaranteed by is_available()
+        assert self.resolved_config is not None  # guaranteed by is_available()
 
         project_logger = get_project_logger(self.resolved_config.project_name)
 
@@ -194,6 +200,7 @@ class CompileOrderService:
 
         Note: Only called from generate() which already verified is_available().
         """
+        assert self.resolved_config is not None  # guaranteed by is_available()
         env = {**os.environ, **self.resolved_config.environment}
 
         executor = self.resolved_config.executor

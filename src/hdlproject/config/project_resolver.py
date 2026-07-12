@@ -193,7 +193,7 @@ class ProjectConfigResolver:
             Absolute path to the top-level file, or None if not found
         """
         extensions = [".vhd", ".vhdl", ".v", ".sv"]
-        found_files = []
+        found_files: list[Path] = []
 
         for ext in extensions:
             pattern = f"{top_level_file_name}{ext}"

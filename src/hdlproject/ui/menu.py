@@ -71,7 +71,7 @@ class ProjectManagementMenu:
             logger.error("No projects found")
             return False
         # Create project choices
-        choices = [Choice(project) for project in projects]
+        choices: list[Choice | Separator] = [Choice(project) for project in projects]
         choices.append(Separator())
         self._selected_projects = inquirer.checkbox(
             message="Select project(s):",
@@ -118,9 +118,9 @@ class ProjectManagementMenu:
                 if not self._confirm_continue():
                     return
 
-    def _create_menu_choices(self) -> list[Choice]:
+    def _create_menu_choices(self) -> list[Choice | Separator]:
         """Create menu choices from handler registry"""
-        choices = []
+        choices: list[Choice | Separator] = []
         is_multi = len(self._selected_projects) > 1
         # Get handlers from application
         menu_handlers = self.app.get_menu_handlers(for_multiple_projects=is_multi)
