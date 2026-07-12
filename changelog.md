@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `environment_setup` scripts wrote their variables into the process-wide
+  environment at config-load time, leaking one project's variables into
+  other projects and racing during parallel builds. Captured variables now
+  live on `ResolvedProjectConfig.environment`, scoped to the owning
+  project: `${VAR}` expansion in that project's own config still sees them
+  (via Pydantic validation context), and tool/compile-order subprocesses
+  receive them through their spawn environment. `os.environ` is never
+  modified.
+- Importing hdlproject destroyed the host application's logging
+  configuration (the root logger's handlers were cleared and replaced at
+  import time). Console handling now attaches lazily to the `hdlproject`
+  package logger; importing the package configures nothing. The CLI's
+  console output and the application log file are unchanged — the file
+  still captures both hdlproject's own records and third-party library
+  output.
+- Opening the tool GUI through a shell-wrapped executor (heredoc mode)
+  would have crashed writing text to a bytes stdin pipe; the GUI launch
+  now uses text mode like the batch path.
+
+### Changed (internal API)
+
+- `config/config_resolver.py` renamed to `config/yaml_loader.py`
+  (matching its `YAMLConfigLoader` class), and `config/resolver.py` to
+  `config/project_resolver.py` with `ConfigResolver` renamed to
+  `ProjectConfigResolver`.
+- Project loggers moved from the `project.*` to the
+  `hdlproject.project.*` namespace.
+- mypy is now enforcing (`check_untyped_defs`, `warn_unused_ignores`);
+  the package type-checks clean, with annotations corrected where they
+  misdescribed runtime types (notably the InquirerPy style helper).
+
+### Fixed (initial review pass)
+
 - `--compile-order-format` had an argparse default of `"json"`, which made the
   global config's `compile_order_format` setting unreachable. The CLI default
   is now `None`, restoring the documented precedence: CLI flag → global
