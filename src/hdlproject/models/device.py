@@ -40,6 +40,7 @@ class ProjectInformation(FlexibleModel):
     project_information:
       project_name: my_project
       top_level_file_name: top_level
+      default_library: work
       tool: vivado
       tool_version: "2020.1"
       device_info:
@@ -53,6 +54,13 @@ class ProjectInformation(FlexibleModel):
     )
     top_level_file_name: str = Field(
         description="Top-level HDL module filename (without path or extension)."
+    )
+    default_library: str = Field(
+        default="work",
+        description=(
+            "Default HDL library for compilation (Vivado's 'default_lib' "
+            "project property). Defaults to 'work' if unset."
+        ),
     )
     device_info: DeviceInfo = Field(description="FPGA device and board configuration.")
     tool: str = Field(

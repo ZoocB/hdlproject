@@ -265,6 +265,7 @@ class TclGenerator:
             # Project identity
             "project_name": config.vivado_project_name,
             "top_level": proj_info.top_level_file_name,
+            "default_library": proj_info.default_library,
             "tool_version_year": proj_info.tool_version_year,
             # Device
             "part": device.part_name,

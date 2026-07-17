@@ -445,8 +445,14 @@
       },
       "ProjectInformation": {
         "additionalProperties": true,
-        "description": "Core project identification and settings.\n\nExample:\n```yaml\nproject_information:\n  project_name: my_project\n  top_level_file_name: top_level\n  tool: vivado\n  tool_version: \"2020.1\"\n  device_info:\n    part_name: xc7z020clg400-1\n    board_name: Arty_Z7_20\n```",
+        "description": "Core project identification and settings.\n\nExample:\n```yaml\nproject_information:\n  project_name: my_project\n  top_level_file_name: top_level\n  default_library: work\n  tool: vivado\n  tool_version: \"2020.1\"\n  device_info:\n    part_name: xc7z020clg400-1\n    board_name: Arty_Z7_20\n```",
         "properties": {
+          "default_library": {
+            "default": "work",
+            "description": "Default HDL library for compilation (Vivado's 'default_lib' project property). Defaults to 'work' if unset.",
+            "title": "Default Library",
+            "type": "string"
+          },
           "device_info": {
             "$ref": "#/$defs/DeviceInfo",
             "description": "FPGA device and board configuration."

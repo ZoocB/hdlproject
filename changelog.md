@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `project_information.default_library` in `hdlproject_project_config.yaml`
+  sets the project's default HDL compilation library (Vivado's `default_lib`
+  project property). Optional; defaults to `work`, preserving existing
+  behaviour for configs that omit it.
+
 ### Fixed
 
 - `environment_setup` scripts wrote their variables into the process-wide

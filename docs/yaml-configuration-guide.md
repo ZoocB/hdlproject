@@ -205,6 +205,7 @@ Example:
 project_information:
   project_name: my_project
   top_level_file_name: top_level
+  default_library: work
   tool: vivado
   tool_version: "2020.1"
   device_info:
@@ -216,6 +217,7 @@ project_information:
 |-------|------|----------|---------|-------------|
 | `project_name` | str | Yes | `—` | Tool project name. Used for project file and output naming. |
 | `top_level_file_name` | str | Yes | `—` | Top-level HDL module filename (without path or extension). |
+| `default_library` | str | No | `'work'` | Default HDL library for compilation (Vivado's 'default_lib' project property). Defaults to 'work' if unset. |
 | `device_info` | [DeviceInfo](#deviceinfo) | Yes | `—` | FPGA device and board configuration. |
 | `tool` | str | No | `'vivado'` | EDA tool to use for this project (e.g., 'vivado'). |
 | `tool_version` | str | Yes | `—` | Tool version string (e.g., '2020.1'). |
@@ -445,6 +447,7 @@ compile_order_format: "my_compile_order_format_0"
 project_information:
   project_name: "my_project_name_0"
   top_level_file_name: "my_top_level_file_name_0"
+  default_library: "my_default_library_0"
   device_info:
     part_name: "my_part_name_0"
     board_name: "my_board_name_0"
